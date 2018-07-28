@@ -6,14 +6,11 @@ import com.binance.api.client.domain.account.Order;
 import com.binance.api.client.domain.account.Trade;
 import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.PriceData;
+import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.exchanges.AccountService;
-import com.sharshar.coinswap.services.CacheService;
-import com.sharshar.coinswap.services.ExchangeCache;
-import com.sharshar.coinswap.services.TickerService;
 import com.sharshar.coinswap.utils.CoinUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
@@ -26,152 +23,69 @@ import java.util.List;
  */
 @Component
 @Scope("prototype")
-public class SwapComponent {
+public class SwapExecutor {
 	private Logger logger = LogManager.getLogger();
 
-	ExchangeCache cache;
+	public SwapExecutor setCache(ExchangeCache cache) {
+		this.cache = cache;
+		return this;
+	}
 
-	@Autowired
-	private CacheService cacheService;
-
-	private String commissionAsset;
+	private ExchangeCache cache;
 
 	public enum ResponseCode {
-		Coin1NotSoldCoin2NotBought,
-		Coin1PartiallySoldCoin2NotBought,
-		Coin1SoldCoin2NotBought,
-		Coin1SoldCoin2Bought,
-		SellOrderNew,
-		SellOrderFilled,
-		SellOrderParitalFilled,
-		SellOrderCancelled,
-		SellOrderPendingCancel,
-		SellOrderRejected,
-		SellOrderExpired,
-		BuyOrderNew,
-		BuyOrderFilled,
-		BuyOrderParitalFilled,
-		BuyOrderCancelled,
-		BuyOrderPendingCancel,
-		BuyOrderRejected,
-		BuyOrderExpired,
-		NoCoin1Defined,
-		NoCoin2Defined,
-		NoBaseCoinDefined,
-		SellOrderError,
-		TransactionSuccessful,
-		BuyOrderError,
-		NotEnoughCommissionCurrency,
-		NoCommissionCoinDefined,
-		UnableToUpdateCoinBalances
+		SELL_ORDER_NEW,
+		SELL_ORDER_FILLED,
+		SELL_ORDER_PARTIAL_FILLED,
+		SELL_ORDER_CANCELLED,
+		SELL_ORDER_PENDING_CANCEL,
+		SELL_ORDER_REJECTED,
+		SELL_ORDER_EXPIRED,
+		BUY_ORDER_NEW,
+		BUY_ORDER_FILLED,
+		BUY_ORDER_PARTIAL_FILLED,
+		BUY_ORDER_CANCELLED,
+		BUY_ORDER_PENDING_CANCEL,
+		BUY_ORDER_REJECTED,
+		BUY_ORDER_EXPIRED,
+		NO_COIN_1_DEFINED,
+		NO_COIN_2_DEFINED,
+		NO_BASE_COIN_DEFINED,
+		SELL_ORDER_ERROR,
+		TRANSACTION_SUCCESSFUL,
+		BUY_ORDER_ERROR,
+		NOT_ENOUGH_COMMISSION_CURRENCY,
+		NO_COMMISSION_COIN_DEFINED,
+		NO_SWAP_DEFINITION_DEFINED,
+		UNABLE_TO_UPDATE_COIN_BALANCES
 	}
 
 	public enum CurrentSwapState {
-		ownsCoin1,
-		ownsCoin2
+		OWNS_COIN_1,
+		OWNS_COIN_2,
+		OWNS_NOTHING
 	}
 
+	private SwapDescriptor swapDescriptor;
+
 	private CurrentSwapState currentSwapState;
-	private String coin1;
-	private double maxAmountCoin1ToBuy;
-	private double maxAmountCoin2ToBuy;
-	private String coin2;
-	private short exchange;
-	private String baseCoin;
 	private double amountCoin1OwnedFree;
 	private double amountCoin2OwnedFree;
 	private double amountBaseCoinOwnedFree;
 	private double amountCommissionAssetFree;
-	private boolean active;
+	private String baseCoin;
 
 	private AccountService accountService;
 
-	@Autowired
-	private TickerService tickerService;
-
-	public SwapComponent(String coin1, String coin2, String commissionAsset, AccountService accountService,
-						 double maxAmountCoin1ToBuy, double maxAmountCoin2ToBuy, double desiredStdDev) {
-		this.coin1 = coin1;
-		this.coin2 = coin2;
-		this.commissionAsset = commissionAsset;
-		this.exchange = accountService.getExchange();
+	public SwapExecutor(SwapDescriptor swapDescriptor, AccountService accountService, String baseCoin) {
+		this.swapDescriptor = swapDescriptor;
 		this.accountService = accountService;
-		this.maxAmountCoin1ToBuy = maxAmountCoin1ToBuy;
-		this.maxAmountCoin2ToBuy = maxAmountCoin2ToBuy;
-		deriveBaseCoin();
-		cache = cacheService.createCache(coin1 + getBaseCoin(), coin2 + getBaseCoin(),
-				accountService.getExchange(), desiredStdDev);
-		cache.setOwningComponent(this);
-	}
-
-	public String getCoin1() {
-		return coin1;
-	}
-
-	public SwapComponent setCoin1(String coin1) {
-		this.coin1 = coin1;
-		return this;
-	}
-
-	public String getCoin2() {
-		return coin2;
-	}
-
-	public SwapComponent setCoin2(String coin2) {
-		this.coin2 = coin2;
-		return this;
-	}
-
-	public short getExchange() {
-		return exchange;
-	}
-
-	public SwapComponent setExchange(short exchange) {
-		this.exchange = exchange;
-		return this;
-	}
-
-	public AccountService getAccountService() {
-		return accountService;
-	}
-
-	public SwapComponent setAccountService(AccountService accountService) {
-		this.accountService = accountService;
-		return this;
+		this.currentSwapState = CurrentSwapState.OWNS_COIN_1;
+		this.baseCoin = baseCoin;
 	}
 
 	public String getBaseCoin() {
-		if (baseCoin == null || baseCoin.isEmpty()) {
-			baseCoin = deriveBaseCoin();
-		}
 		return baseCoin;
-	}
-
-
-	/**
-	 * If we don't have a base coin defined, see if you can find one in which the two coins have one in common.
-	 * Bitcoin is probably the safest, but in theory, it could find others.
-	 *
-	 * @return the best base coin to use
-	 */
-	public String deriveBaseCoin() {
-		List<PriceData> priceData = accountService.getAllPrices();
-		if (CoinUtils.hasPriceData(coin1 + tickerService.getDefaultBaseCurrency(), priceData)) {
-			return tickerService.getDefaultBaseCurrency();
-		}
-		for (String baseCurrency : tickerService.getBaseCurrencies()) {
-			if (baseCurrency.equalsIgnoreCase(coin1)) {
-				return baseCurrency;
-			}
-			if (baseCurrency.equalsIgnoreCase(coin2)) {
-				return baseCurrency;
-			}
-			if (CoinUtils.hasPriceData(coin1 + baseCurrency, priceData) &&
-					CoinUtils.hasPriceData(coin2 + baseCurrency, priceData)) {
-				return baseCurrency;
-			}
-		}
-		return null;
 	}
 
 	/**
@@ -180,17 +94,20 @@ public class SwapComponent {
 	 * @return the response code of the error or null if there is no errors
 	 */
 	private ResponseCode getAnyInitializationErrors() {
-		if (coin1 == null || coin1.isEmpty()) {
-			return ResponseCode.NoCoin1Defined;
+		if (swapDescriptor == null) {
+			return ResponseCode.NO_SWAP_DEFINITION_DEFINED;
 		}
-		if (coin2 == null || coin2.isEmpty()) {
-			return ResponseCode.NoCoin2Defined;
+		if (swapDescriptor.getCoin1() == null || swapDescriptor.getCoin1().isEmpty()) {
+			return ResponseCode.NO_COIN_1_DEFINED;
 		}
-		if (getBaseCoin() == null || getBaseCoin().isEmpty()) {
-			return ResponseCode.NoBaseCoinDefined;
+		if (swapDescriptor.getCoin2() == null || swapDescriptor.getCoin2().isEmpty()) {
+			return ResponseCode.NO_COIN_2_DEFINED;
 		}
-		if (commissionAsset == null || commissionAsset.isEmpty()) {
-			return ResponseCode.NoCommissionCoinDefined;
+		if (baseCoin == null || baseCoin.isEmpty()) {
+			return ResponseCode.NO_BASE_COIN_DEFINED;
+		}
+		if (swapDescriptor.getCommissionCoin() == null || swapDescriptor.getCommissionCoin().isEmpty()) {
+			return ResponseCode.NO_COMMISSION_COIN_DEFINED;
 		}
 		return null;
 	}
@@ -199,15 +116,15 @@ public class SwapComponent {
 	 * Simulate trading to do analytics
 	 *
 	 * @param amountCoinAToSell - How much of coinA to sell. This is usually all of it
-	 * @param coinA - The coin to sell (without coin base)
-	 * @param coinB - the coin to buy (without coin base)
-	 * @param maxCoinToBuy - the maximum amount you want to buy of coinB
-	 * @param priceData - the latest price data so we can calculate things like transaction fees and how much of
-	 *                  coinB we can buy
-	 * @return the response code to the trade. This will almost always be TransactionSuccessful unless the component
+	 * @param coinA             - The coin to sell (without coin base)
+	 * @param coinB             - the coin to buy (without coin base)
+	 * @param maxCoinToBuy      - the maximum amount you want to buy of coinB
+	 * @param priceData         - the latest price data so we can calculate things like transaction fees and how much of
+	 *                          coinB we can buy
+	 * @return the response code to the trade. This will almost always be TRANSACTION_SUCCESSFUL unless the component
 	 * is not correctly initialized
 	 */
-	public ResponseCode simulateCoinSwap(double amountCoinAToSell, String coinA, String coinB, double maxCoinToBuy, List<PriceData> priceData) {
+	private ResponseCode simulateCoinSwap(double amountCoinAToSell, String coinA, String coinB, double maxCoinToBuy, List<PriceData> priceData) {
 		ResponseCode initErrors = getAnyInitializationErrors();
 		if (initErrors != null) {
 			return initErrors;
@@ -240,7 +157,7 @@ public class SwapComponent {
 			amountCommissionAssetFree -= getCommissionNeeded(coinB, amountCoinToBuy, accountService.getDefaultTransactionFee(), priceData);
 		}
 
-		return ResponseCode.TransactionSuccessful;
+		return ResponseCode.TRANSACTION_SUCCESSFUL;
 	}
 
 	/**
@@ -248,14 +165,14 @@ public class SwapComponent {
 	 * proceeds to buy the other coin.
 	 *
 	 * @param amountCoinAToSell - The amount of coinA to sell
-	 * @param coinA - The coin to sell (without coin base)
-	 * @param coinB - the coin to buy (without coin base)
-	 * @param maxCoinToBuy - the maximum amount you want to buy of coinB
-	 * @param priceData - the latest price data so we can calculate things like transaction fees and how much of
-	 *                  coinB we can buy
+	 * @param coinA             - The coin to sell (without coin base)
+	 * @param coinB             - the coin to buy (without coin base)
+	 * @param maxCoinToBuy      - the maximum amount you want to buy of coinB
+	 * @param priceData         - the latest price data so we can calculate things like transaction fees and how much of
+	 *                          coinB we can buy
 	 * @return the response code to the trade
 	 */
-	public ResponseCode coinSwap(double amountCoinAToSell, String coinA, String coinB, double maxCoinToBuy, List<PriceData> priceData) {
+	private ResponseCode coinSwap(double amountCoinAToSell, String coinA, String coinB, double maxCoinToBuy, List<PriceData> priceData) {
 
 		ResponseCode initErrors = getAnyInitializationErrors();
 		if (initErrors != null) {
@@ -270,15 +187,15 @@ public class SwapComponent {
 			// Make sure we have enough coin in commissions to do the trade
 			boolean haveEnoughForCommission = haveEnoughForCommission(coinA, amountCoinAToSell, accountService.getDefaultTransactionFee(), priceData);
 			if (!haveEnoughForCommission) {
-				return ResponseCode.NotEnoughCommissionCurrency;
+				return ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY;
 			}
 
 			// Do the trade
 			ResponseCode sellResponse = sellCoin(coinA, amountCoinAToSell);
-			if (sellResponse == ResponseCode.SellOrderFilled) {
+			if (sellResponse == ResponseCode.SELL_ORDER_FILLED) {
 				logger.info("Sell order filled for: " + coinA + getBaseCoin());
 				if (!loadBalances()) {
-					return ResponseCode.UnableToUpdateCoinBalances;
+					return ResponseCode.UNABLE_TO_UPDATE_COIN_BALANCES;
 				}
 			} else {
 				return sellResponse;
@@ -297,38 +214,40 @@ public class SwapComponent {
 			// Make sure we have enough coin in commission to do the trade
 			boolean haveEnoughForCommission = haveEnoughForCommission(coinB, amountCoinToBuy, accountService.getDefaultTransactionFee(), priceData);
 			if (!haveEnoughForCommission) {
-				return ResponseCode.NotEnoughCommissionCurrency;
+				return ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY;
 			}
 
 			ResponseCode buyResponse = buyCoin(coinB, amountCoinToBuy);
-			if (buyResponse == ResponseCode.BuyOrderFilled) {
+			if (buyResponse == ResponseCode.BUY_ORDER_FILLED) {
 				logger.info("Buy order filled for: " + coinB + getBaseCoin());
 				if (!loadBalances()) {
-					return ResponseCode.UnableToUpdateCoinBalances;
+					return ResponseCode.UNABLE_TO_UPDATE_COIN_BALANCES;
 				}
 			} else {
 				return buyResponse;
 			}
 		}
-		return ResponseCode.TransactionSuccessful;
+		return ResponseCode.TRANSACTION_SUCCESSFUL;
 	}
 
 	/**
 	 * Swaps coin1 to coin2
 	 *
 	 * @param priceData - the list of price data to estimate fees
-	 * @param simulate - if we want to do it for real, or just simulate it
+	 * @param simulate  - if we want to do it for real, or just simulate it
 	 * @return the response code
 	 */
 	public ResponseCode swapCoin1ToCoin2(List<PriceData> priceData, boolean simulate) {
 		ResponseCode code = null;
 		if (simulate) {
-			code = simulateCoinSwap(amountCoin1OwnedFree, coin1, coin2, maxAmountCoin2ToBuy, priceData);
+			code = simulateCoinSwap(amountCoin1OwnedFree, swapDescriptor.getCoin1(), swapDescriptor.getCoin2(),
+					swapDescriptor.getMaxAmountCoin2ToBuy(), priceData);
 		} else {
-			code = coinSwap(amountCoin1OwnedFree, coin1, coin2, maxAmountCoin2ToBuy, priceData);
+			code = coinSwap(amountCoin1OwnedFree, swapDescriptor.getCoin1(), swapDescriptor.getCoin2(),
+					swapDescriptor.getMaxAmountCoin2ToBuy(), priceData);
 		}
-		if (code == ResponseCode.BuyOrderFilled) {
-			currentSwapState = CurrentSwapState.ownsCoin2;
+		if (code == ResponseCode.BUY_ORDER_FILLED) {
+			currentSwapState = CurrentSwapState.OWNS_COIN_2;
 		}
 		return code;
 	}
@@ -337,18 +256,20 @@ public class SwapComponent {
 	 * Swaps coin2 to coin1
 	 *
 	 * @param priceData - the list of price data to estimate fees
-	 * @param simulate - if we want to do it for real, or just simulate it
+	 * @param simulate  - if we want to do it for real, or just simulate it
 	 * @return the response code
 	 */
 	public ResponseCode swapCoin2ToCoin1(List<PriceData> priceData, boolean simulate) {
 		ResponseCode code = null;
 		if (simulate) {
-			code = simulateCoinSwap(amountCoin2OwnedFree, coin2, coin1, maxAmountCoin1ToBuy, priceData);
+			code = simulateCoinSwap(amountCoin2OwnedFree, swapDescriptor.getCoin2(), swapDescriptor.getCoin1(),
+					swapDescriptor.getMaxAmountCoin1ToBuy(), priceData);
 		} else {
-			code = coinSwap(amountCoin2OwnedFree, coin2, coin1, maxAmountCoin1ToBuy, priceData);
+			code = coinSwap(amountCoin2OwnedFree, swapDescriptor.getCoin2(), swapDescriptor.getCoin1(),
+					swapDescriptor.getMaxAmountCoin1ToBuy(), priceData);
 		}
-		if (code == ResponseCode.BuyOrderFilled) {
-			currentSwapState = CurrentSwapState.ownsCoin1;
+		if (code == ResponseCode.BUY_ORDER_FILLED) {
+			currentSwapState = CurrentSwapState.OWNS_COIN_1;
 		}
 		return code;
 	}
@@ -358,15 +279,15 @@ public class SwapComponent {
 	 *
 	 * @return if it was successfully done
 	 */
-	public boolean loadBalances() {
+	private boolean loadBalances() {
 		List<OwnedAsset> assets = accountService.getAllBalances();
 		if (assets == null) {
 			return false;
 		}
-		OwnedAsset ownedAsset1 = CoinUtils.getAssetValue(coin1, assets);
-		OwnedAsset ownedAsset2 = CoinUtils.getAssetValue(coin2, assets);
+		OwnedAsset ownedAsset1 = CoinUtils.getAssetValue(swapDescriptor.getCoin1(), assets);
+		OwnedAsset ownedAsset2 = CoinUtils.getAssetValue(swapDescriptor.getCoin2(), assets);
 		OwnedAsset ownedAssetBaseAsset = CoinUtils.getAssetValue(getBaseCoin(), assets);
-		OwnedAsset ownedCommisionAsset = CoinUtils.getAssetValue(commissionAsset, assets);
+		OwnedAsset ownedCommisionAsset = CoinUtils.getAssetValue(swapDescriptor.getCommissionCoin(), assets);
 		amountCoin1OwnedFree = CoinUtils.getAmountOwnedValueFree(ownedAsset1);
 		amountCoin2OwnedFree = CoinUtils.getAmountOwnedValueFree(ownedAsset2);
 		amountBaseCoinOwnedFree = CoinUtils.getAmountOwnedValueFree(ownedAssetBaseAsset);
@@ -377,17 +298,17 @@ public class SwapComponent {
 	/**
 	 * Estimate the amount of commission needed. A trade won't work if you don't have enough of the commission coin.
 	 *
-	 * @param coin - The coin you want to buy/sell
-	 * @param amountCoin - the amount of coin you wan to buy or sell
+	 * @param coin                  - The coin you want to buy/sell
+	 * @param amountCoin            - the amount of coin you wan to buy or sell
 	 * @param defaultTransactionFee - The default transaction fee
-	 * @param priceData - the price data to do the conversion from the coin to the commission coin
+	 * @param priceData             - the price data to do the conversion from the coin to the commission coin
 	 * @return the amount of commission we should need
 	 */
 	private double getCommissionNeeded(String coin, double amountCoin, double defaultTransactionFee,
-									  List<PriceData> priceData) {
+									   List<PriceData> priceData) {
 
 		double priceForCoin = CoinUtils.getPrice(coin + getBaseCoin(), priceData);
-		double priceForCommissionCoin = CoinUtils.getPrice(commissionAsset + getBaseCoin(), priceData);
+		double priceForCommissionCoin = CoinUtils.getPrice(swapDescriptor.getCommissionCoin() + getBaseCoin(), priceData);
 
 		// Commission in base currency
 		double commission = amountCoin * priceForCoin * defaultTransactionFee;
@@ -398,14 +319,14 @@ public class SwapComponent {
 	 * Determine if we have enough commission coin to do a transaction. A trade won't work if you don't have enough of
 	 * the commission coin. Assume a factor of 2 for a buffer
 	 *
-	 * @param coin - The coin you want to buy/sell
-	 * @param amountCoin - the amount of coin you wan to buy or sell
+	 * @param coin                  - The coin you want to buy/sell
+	 * @param amountCoin            - the amount of coin you wan to buy or sell
 	 * @param defaultTransactionFee - The default transaction fee
-	 * @param priceData - the price data to do the conversion from the coin to the commission coin
+	 * @param priceData             - the price data to do the conversion from the coin to the commission coin
 	 * @return if we have enough to do the trade
 	 */
 	private boolean haveEnoughForCommission(String coin, double amountCoin, double defaultTransactionFee,
-										   List<PriceData> priceData) {
+											List<PriceData> priceData) {
 
 		double commissionCoinNeeded = getCommissionNeeded(coin, amountCoin, defaultTransactionFee, priceData);
 
@@ -416,7 +337,7 @@ public class SwapComponent {
 	/**
 	 * Create a market order to sell a coin with the exchange
 	 *
-	 * @param coin - the coin to sell
+	 * @param coin             - the coin to sell
 	 * @param amountCoinToSell - the amount to sell
 	 * @return the response code to the sell
 	 */
@@ -425,42 +346,42 @@ public class SwapComponent {
 		long startTime = System.currentTimeMillis();
 		NewOrderResponse response = accountService.createSellMarketOrder(coin + getBaseCoin(), amountCoinToSell);
 		if (response == null) {
-			return ResponseCode.SellOrderError;
+			return ResponseCode.SELL_ORDER_ERROR;
 		}
 
 		// Retrieve the transaction Id
 		String clientId = response.getClientOrderId();
 		Order order = waitForResponse(coin + getBaseCoin(), clientId);
 
-		double totalTimeInSeconds = (System.currentTimeMillis() - startTime) / 1000;
+		double totalTimeInSeconds = ((double) System.currentTimeMillis() - startTime) / 1000;
 		logger.info("Sell order " + order.getClientOrderId() + " (" + order.getOrderId() + ") completed in " + totalTimeInSeconds + " seconds");
 
 		OrderStatus status = order.getStatus();
 		// Check status of order
 		switch (status) {
 			case PARTIALLY_FILLED:
-				return ResponseCode.SellOrderParitalFilled;
+				return ResponseCode.SELL_ORDER_PARTIAL_FILLED;
 			case FILLED:
-				return ResponseCode.SellOrderFilled;
+				return ResponseCode.SELL_ORDER_FILLED;
 			case NEW:
-				return ResponseCode.SellOrderNew;
+				return ResponseCode.SELL_ORDER_NEW;
 			case CANCELED:
-				return ResponseCode.SellOrderCancelled;
+				return ResponseCode.SELL_ORDER_CANCELLED;
 			case PENDING_CANCEL:
-				return ResponseCode.SellOrderPendingCancel;
+				return ResponseCode.SELL_ORDER_PENDING_CANCEL;
 			case REJECTED:
-				return ResponseCode.SellOrderRejected;
+				return ResponseCode.SELL_ORDER_REJECTED;
 			case EXPIRED:
-				return ResponseCode.SellOrderExpired;
+				return ResponseCode.SELL_ORDER_EXPIRED;
 		}
-		return ResponseCode.SellOrderFilled;
+		return ResponseCode.SELL_ORDER_FILLED;
 	}
 
 	/**
 	 * Once we do a trade, determine the actual commission. We usually just reload the values so we don't need to do
 	 * the calculation ourselves, but could be useful in other contexts
 	 *
-	 * @param ticker - the ticker (coin + base currency) used in the trade
+	 * @param ticker  - the ticker (coin + base currency) used in the trade
 	 * @param orderId - the order id of the trade
 	 * @return the amount of commission
 	 */
@@ -471,7 +392,8 @@ public class SwapComponent {
 
 	/**
 	 * Purchase the coin from the exchange
-	 * @param coin - the coin to buy
+	 *
+	 * @param coin        - the coin to buy
 	 * @param amountToBuy - the amount to buy
 	 * @return the response code of the purchase
 	 */
@@ -480,7 +402,7 @@ public class SwapComponent {
 		long startTime = System.currentTimeMillis();
 		NewOrderResponse response = accountService.createBuyMarketOrder(coin + getBaseCoin(), amountToBuy);
 		if (response == null) {
-			return ResponseCode.BuyOrderError;
+			return ResponseCode.BUY_ORDER_ERROR;
 		}
 
 		// Retrieve the transaction Id
@@ -495,26 +417,27 @@ public class SwapComponent {
 		// Check status of order
 		switch (status) {
 			case PARTIALLY_FILLED:
-				return ResponseCode.BuyOrderParitalFilled;
+				return ResponseCode.BUY_ORDER_PARTIAL_FILLED;
 			case FILLED:
-				return ResponseCode.BuyOrderFilled;
+				return ResponseCode.BUY_ORDER_FILLED;
 			case NEW:
-				return ResponseCode.BuyOrderNew;
+				return ResponseCode.BUY_ORDER_NEW;
 			case CANCELED:
-				return ResponseCode.BuyOrderCancelled;
+				return ResponseCode.BUY_ORDER_CANCELLED;
 			case PENDING_CANCEL:
-				return ResponseCode.BuyOrderPendingCancel;
+				return ResponseCode.BUY_ORDER_PENDING_CANCEL;
 			case REJECTED:
-				return ResponseCode.BuyOrderRejected;
+				return ResponseCode.BUY_ORDER_REJECTED;
 			case EXPIRED:
-				return ResponseCode.BuyOrderExpired;
+				return ResponseCode.BUY_ORDER_EXPIRED;
 		}
-		return ResponseCode.BuyOrderFilled;
+		return ResponseCode.BUY_ORDER_FILLED;
 	}
 
 	/**
 	 * Doesn't return until the exchange buy/sell has completed or failed
-	 * @param ticker - the ticker (coin + base coin) to check
+	 *
+	 * @param ticker   - the ticker (coin + base coin) to check
 	 * @param clientId - the client order id
 	 * @return - the order in the completed state or error state
 	 */
@@ -531,10 +454,6 @@ public class SwapComponent {
 			status = order.getStatus();
 		}
 		return order;
-	}
-
-	public String getCommissionAsset() {
-		return commissionAsset;
 	}
 
 	public double getAmountCoin1OwnedFree() {
@@ -557,39 +476,49 @@ public class SwapComponent {
 		return currentSwapState;
 	}
 
-	public double getMaxAmountCoin1ToBuy() {
-		return maxAmountCoin1ToBuy;
-	}
-
-	public SwapComponent setMaxAmountCoin1ToBuy(double maxAmountCoin1ToBuy) {
-		this.maxAmountCoin1ToBuy = maxAmountCoin1ToBuy;
-		return this;
-	}
-
-	public double getMaxAmountCoin2ToBuy() {
-		return maxAmountCoin2ToBuy;
-	}
-
-	public SwapComponent setMaxAmountCoin2ToBuy(double maxAmountCoin2ToBuy) {
-		this.maxAmountCoin2ToBuy = maxAmountCoin2ToBuy;
-		return this;
-	}
-
-	public SwapComponent setBaseCoin(String baseCoin) {
-		this.baseCoin = baseCoin;
-		return this;
-	}
-
-	public boolean isActive() {
-		return active;
-	}
-
-	public SwapComponent setActive(boolean active) {
-		this.active = active;
-		return this;
-	}
-
 	public ExchangeCache getCache() {
 		return cache;
+	}
+
+	/**
+	 * If we change the active state, we have to reset any data
+	 *
+	 * @param active if the status is active
+	 */
+	public void resetActive(boolean active) {
+		// Maybe already set, but make sure
+		swapDescriptor.setActive(active);
+
+		// Load balances
+		this.loadBalances();
+
+		// Determine which coin we currently own of the two swapped items
+		currentSwapState = findOutCurrentState();
+
+		// Clear out the cache
+		cache.clear();
+	}
+
+	private CurrentSwapState findOutCurrentState() {
+		// If we don't own anything, return owns nothing
+		if (amountCoin1OwnedFree == 0 && amountCoin2OwnedFree == 0) {
+			return CurrentSwapState.OWNS_NOTHING;
+		}
+		// If one value is 0 and the other one isn't, we own the other one.
+		if (amountCoin1OwnedFree == 0 && amountCoin2OwnedFree > 0) {
+			return CurrentSwapState.OWNS_COIN_2;
+		}
+		if (amountCoin2OwnedFree == 0 && amountCoin1OwnedFree > 0) {
+			return CurrentSwapState.OWNS_COIN_1;
+		}
+		// If it's less obvious, choose the one with the largest value in BTC
+		PriceData pd1 = cache.getLastPriceData(swapDescriptor.getCoin1() + baseCoin);
+		PriceData pd2 = cache.getLastPriceData(swapDescriptor.getCoin2() + baseCoin);
+		double amtBtc1 = pd1.getPrice() * amountCoin1OwnedFree;
+		double amtBtc2 = pd2.getPrice() * amountCoin2OwnedFree;
+		if (amtBtc1 > amtBtc2) {
+			return CurrentSwapState.OWNS_COIN_1;
+		}
+		return CurrentSwapState.OWNS_COIN_2;
 	}
 }

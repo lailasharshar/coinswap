@@ -14,6 +14,8 @@ import com.sharshar.coinswap.beans.OrderHistory;
 import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.exchanges.AccountService;
+import com.sharshar.coinswap.exchanges.Data;
+import com.sharshar.coinswap.exchanges.HistoricalDataPull;
 import com.sharshar.coinswap.repositories.OrderHistoryRepository;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.logging.log4j.LogManager;
@@ -22,9 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -41,6 +41,9 @@ public class BinanceAccountServices implements AccountService {
 
 	@Autowired
 	private OrderHistoryRepository orderHistoryRepository;
+
+	@Autowired
+	private HistoricalDataPull historicalDataPull;
 
 	@Value("${binance.transactionFee}")
 	private double transactionFee;
@@ -189,5 +192,17 @@ public class BinanceAccountServices implements AccountService {
 	public List<Order> getAllMyOrders(String ticker) {
 		AllOrdersRequest request = new AllOrdersRequest(ticker);
 		return binanceApiRestClient.getAllOrders(request);
+	}
+
+	public List<PriceData> getBackfillData(int cacheSize, String coin, String baseCoin) {
+		List<PriceData> pdList = new ArrayList<>();
+
+		List<Data> historicalDataPullData = historicalDataPull.getData(coin, baseCoin, cacheSize, "Binance");
+		if (historicalDataPullData == null) {
+			return pdList;
+		}
+		return historicalDataPullData.stream().map(c ->
+				new PriceData().setExchange(ScratchConstants.BINANCE).setPrice(c.getOpen()).setTicker(coin + baseCoin).setUpdateTime(c.getTime()))
+				.collect(Collectors.toList());
 	}
 }

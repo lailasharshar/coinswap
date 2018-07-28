@@ -9,9 +9,9 @@ import javax.persistence.*;
  */
 @Entity
 @Table(name="swap")
-public class Swap {
+public class SwapDescriptor {
 	@Id
-	@GeneratedValue(strategy= GenerationType.AUTO)
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long tableId;
 
 	private String coin1;
@@ -25,11 +25,11 @@ public class Swap {
 	private boolean active;
 	private double desiredStdDev;
 
-	public long getTableId() {
+	public Long getTableId() {
 		return tableId;
 	}
 
-	public Swap setTableId(long tableId) {
+	public SwapDescriptor setTableId(long tableId) {
 		this.tableId = tableId;
 		return this;
 	}
@@ -38,7 +38,7 @@ public class Swap {
 		return coin1;
 	}
 
-	public Swap setCoin1(String coin1) {
+	public SwapDescriptor setCoin1(String coin1) {
 		this.coin1 = coin1;
 		return this;
 	}
@@ -47,7 +47,7 @@ public class Swap {
 		return coin2;
 	}
 
-	public Swap setCoin2(String coin2) {
+	public SwapDescriptor setCoin2(String coin2) {
 		this.coin2 = coin2;
 		return this;
 	}
@@ -56,7 +56,7 @@ public class Swap {
 		return exchange;
 	}
 
-	public Swap setExchange(short exchange) {
+	public SwapDescriptor setExchange(short exchange) {
 		this.exchange = exchange;
 		return this;
 	}
@@ -65,7 +65,7 @@ public class Swap {
 		return commissionCoin;
 	}
 
-	public Swap setCommissionCoin(String commissionCoin) {
+	public SwapDescriptor setCommissionCoin(String commissionCoin) {
 		this.commissionCoin = commissionCoin;
 		return this;
 	}
@@ -74,7 +74,7 @@ public class Swap {
 		return maxAmountCoin1ToBuy;
 	}
 
-	public Swap setMaxAmountCoin1ToBuy(double maxAmountCoin1ToBuy) {
+	public SwapDescriptor setMaxAmountCoin1ToBuy(double maxAmountCoin1ToBuy) {
 		this.maxAmountCoin1ToBuy = maxAmountCoin1ToBuy;
 		return this;
 	}
@@ -83,7 +83,7 @@ public class Swap {
 		return maxAmountCoin2ToBuy;
 	}
 
-	public Swap setMaxAmountCoin2ToBuy(double maxAmountCoin2ToBuy) {
+	public SwapDescriptor setMaxAmountCoin2ToBuy(double maxAmountCoin2ToBuy) {
 		this.maxAmountCoin2ToBuy = maxAmountCoin2ToBuy;
 		return this;
 	}
@@ -92,7 +92,7 @@ public class Swap {
 		return active;
 	}
 
-	public Swap setActive(boolean active) {
+	public SwapDescriptor setActive(boolean active) {
 		this.active = active;
 		return this;
 	}
@@ -101,7 +101,7 @@ public class Swap {
 		return desiredStdDev;
 	}
 
-	public Swap setDesiredStdDev(double desiredStdDev) {
+	public SwapDescriptor setDesiredStdDev(double desiredStdDev) {
 		this.desiredStdDev = desiredStdDev;
 		return this;
 	}

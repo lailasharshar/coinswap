@@ -1,21 +1,19 @@
-package com.sharshar.coinswap.services;
+package com.sharshar.coinswap.components;
 
 import com.sharshar.coinswap.beans.PriceData;
-import com.sharshar.coinswap.components.SwapComponent;
+import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.utils.AnalysisUtils;
 import com.sharshar.coinswap.utils.CoinUtils;
 import com.sharshar.coinswap.utils.LimitedArrayList;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
-import static com.sharshar.coinswap.services.ExchangeCache.Position.*;
+import static com.sharshar.coinswap.components.ExchangeCache.Position.*;
 
 /**
  * Used to cache the list of tickers so we don't have to continually go to the database
@@ -23,7 +21,7 @@ import static com.sharshar.coinswap.services.ExchangeCache.Position.*;
  * Created by lsharshar on 3/19/2018.
  */
 
-@Service
+@Component
 @Scope("prototype")
 public class ExchangeCache {
 	Logger logger = LogManager.getLogger();
@@ -36,42 +34,37 @@ public class ExchangeCache {
 		BelowDesiredRatio
 	}
 
-	@Value("${cacheSize}")
-	private int cacheSize;
-
-	@Autowired
-	TradeService tradeService;
-
-	SwapComponent owningComponent;
+	SwapDescriptor swapDescriptor;
 
 	private short exchange;
 	private String ticker1;
 	private String ticker2;
-	private double desiredStdDeviation;
 	private double lastStandardDeviation;
 	private double lastMeanRatio;
 	private double lowRatio;
 	private double highRatio;
+	private int cacheSize;
 
 	private Map<String, List<PriceData>> priceCache;
 
-	public ExchangeCache(short exchange, String ticker1, String ticker2, double desiredStdDev) {
-		this.ticker1 = ticker1;
-		this.ticker2 = ticker2;
-		this.desiredStdDeviation = desiredStdDev;
-		this.exchange = exchange;
-		if (cacheSize == 0) {
-			cacheSize = 100;
+	public ExchangeCache(SwapDescriptor swapDescriptor, int cacheSize, String baseCoin) {
+		this.swapDescriptor = swapDescriptor;
+		this.ticker1 = swapDescriptor.getCoin1() + baseCoin;
+		this.ticker2 = swapDescriptor.getCoin2() + baseCoin;
+		this.exchange = swapDescriptor.getExchange();
+		this.cacheSize = cacheSize;
+		if (this.cacheSize == 0) {
+			this.cacheSize = 100;
 		}
 		priceCache = new HashMap<>();
-		priceCache.put(ticker1, new LimitedArrayList<>(cacheSize));
-		priceCache.put(ticker2, new LimitedArrayList<>(cacheSize));
+		priceCache.put(ticker1, new LimitedArrayList<>(this.cacheSize));
+		priceCache.put(ticker2, new LimitedArrayList<>(this.cacheSize));
 	}
 
-	public void addPriceData(List<PriceData> priceData) {
+	public Position addPriceData(List<PriceData> priceData) {
 		if (priceData == null) {
 			logger.error("Invalid price data added to cache");
-			return;
+			return InvalidData;
 		}
 		PriceData currentPd1 = CoinUtils.getPriceData(ticker1, priceData);
 		PriceData currentPd2 = CoinUtils.getPriceData(ticker2, priceData);
@@ -81,8 +74,17 @@ public class ExchangeCache {
 		pd2List.add(currentPd2);
 		if (pd1List.size() < cacheSize) {
 			logger.info("Insufficient price data to swap");
-			return;
+			return InsufficientData;
 		}
+		return updateStats(currentPd1, currentPd2, swapDescriptor.getDesiredStdDev());
+	}
+
+	private Position updateStats(PriceData currentPd1, PriceData currentPd2, double desiredStdDeviation) {
+		if (priceCache.size() < cacheSize) {
+			return InsufficientData;
+		}
+		List<PriceData> pd1List = priceCache.get(ticker1);
+		List<PriceData> pd2List = priceCache.get(ticker2);
 		double currentRatio = currentPd1.getPrice()/currentPd2.getPrice();
 		List<Double> ratioList = AnalysisUtils.getRatioList(pd1List, pd2List);
 		lastMeanRatio = AnalysisUtils.getMean(ratioList);
@@ -93,30 +95,16 @@ public class ExchangeCache {
 			lowRatio = 0;
 		}
 		highRatio = lastMeanRatio + (desiredStdDeviation * lastStandardDeviation);
-		if (highRatio > 1) {
-			highRatio = 1;
-		}
 		logger.debug("Mean ratio: " + lastMeanRatio + ", Std Dev: " + lastStandardDeviation
-			+ ", low value: " + lowRatio + ", high value: " + highRatio);
+				+ ", low value: " + lowRatio + ", high value: " + highRatio);
 		Position position = WithinDesiredRatio;
 		if (currentRatio < lowRatio && lowRatio > 0) {
-			position = BelowDesiredRatio;
+			return BelowDesiredRatio;
 		}
 		if (currentRatio > highRatio && highRatio > 0) {
-			position = AboveDesiredRatio;
+			return AboveDesiredRatio;
 		}
-		swap(position, priceData, owningComponent.isActive());
-	}
-
-	public void swap(Position position, List<PriceData> priceData, boolean simulate) {
-		if (owningComponent.getCurrentSwapState() == SwapComponent.CurrentSwapState.ownsCoin2 &&
-				position == Position.AboveDesiredRatio) {
-			owningComponent.swapCoin2ToCoin1(priceData, simulate);
-		}
-		if (owningComponent.getCurrentSwapState() == SwapComponent.CurrentSwapState.ownsCoin1 &&
-				position == Position.BelowDesiredRatio) {
-			owningComponent.swapCoin1ToCoin2(priceData, simulate);
-		}
+		return position;
 	}
 
 	public Date getLatestUpdate() {
@@ -167,54 +155,20 @@ public class ExchangeCache {
 		return exchange;
 	}
 
-	public ExchangeCache setExchange(short exchange) {
-		this.exchange = exchange;
-		return this;
-	}
-
 	public String getTicker1() {
 		return ticker1;
-	}
-
-	public ExchangeCache setTicker1(String ticker1) {
-		this.ticker1 = ticker1;
-		return this;
 	}
 
 	public String getTicker2() {
 		return ticker2;
 	}
 
-	public ExchangeCache setTicker2(String ticker2) {
-		this.ticker2 = ticker2;
-		return this;
-	}
-
 	public double getLastStandardDeviation() {
 		return lastStandardDeviation;
 	}
 
-	public ExchangeCache setLastStandardDeviation(double lastStandardDeviation) {
-		this.lastStandardDeviation = lastStandardDeviation;
-		return this;
-	}
-
 	public double getLastMeanRatio() {
 		return lastMeanRatio;
-	}
-
-	public ExchangeCache setLastMeanRatio(double lastMeanRatio) {
-		this.lastMeanRatio = lastMeanRatio;
-		return this;
-	}
-
-	public double getDesiredStdDeviation() {
-		return desiredStdDeviation;
-	}
-
-	public ExchangeCache setDesiredStdDeviation(double desiredStdDeviation) {
-		this.desiredStdDeviation = desiredStdDeviation;
-		return this;
 	}
 
 	public double getLowRatio() {
@@ -230,17 +184,7 @@ public class ExchangeCache {
 		return highRatio;
 	}
 
-	public ExchangeCache setHighRatio(double highRatio) {
-		this.highRatio = highRatio;
-		return this;
-	}
-
-	public SwapComponent getOwningComponent() {
-		return owningComponent;
-	}
-
-	public ExchangeCache setOwningComponent(SwapComponent owningComponent) {
-		this.owningComponent = owningComponent;
-		return this;
+	public PriceData getLastPriceData(String ticker) {
+		return Collections.max(priceCache.get(ticker), Comparator.comparing(PriceData::getUpdateTime));
 	}
 }
