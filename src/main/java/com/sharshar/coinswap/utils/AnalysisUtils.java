@@ -25,10 +25,13 @@ public class AnalysisUtils {
 	}
 
 	public static double getStdDev(List<Double> data, double mean) {
-		if (data == null || data.isEmpty()) {
+		if (data == null || data.size() < 2) {
 			return 0;
 		}
 		double totalSquared = data.stream().mapToDouble(c -> Math.pow(Math.abs(c - mean), 2)).sum();
+		if (data.size() == 0) {
+			return 0;
+		}
 		double meanOfSquared = totalSquared/(data.size() - 1);
 		return Math.sqrt(meanOfSquared);
 	}

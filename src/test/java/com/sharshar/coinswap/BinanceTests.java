@@ -5,6 +5,8 @@ import com.binance.api.client.domain.account.Account;
 import com.binance.api.client.domain.account.Order;
 import com.binance.api.client.domain.account.Trade;
 import com.sharshar.coinswap.beans.PriceData;
+import com.sharshar.coinswap.beans.Ticker;
+import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -28,7 +30,10 @@ public class BinanceTests {
 
 	@Test
 	public void testOrderDetails() {
-		List<Trade> trades = binanceAccountServices.getMyTrades("BNBBTC", "58100614");
-		System.out.println("Trades: " + trades);
+
+		//List<Trade> trades = binanceAccountServices.getMyTrades("BNBBTC", "58100614");
+		//System.out.println("Trades: " + trades);
+		//List<Ticker> tickers = binanceAccountServices.getTickerDefinitions();
+		//System.out.println("Tickers: " + tickers);
 	}
 }

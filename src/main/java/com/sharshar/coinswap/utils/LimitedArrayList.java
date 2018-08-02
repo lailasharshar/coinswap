@@ -22,7 +22,7 @@ public class LimitedArrayList<T> extends ArrayList<T> {
 	 */
 	@Override
 	public boolean add(T item) {
-		if (this.size() > limit) {
+		if (this.size() >= limit) {
 			this.remove(0);
 		}
 		return super.add(item);

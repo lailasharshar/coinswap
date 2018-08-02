@@ -10,6 +10,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +24,7 @@ import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.TRANSAC
  * <p>
  * Created by lsharshar on 7/27/2018.
  */
+@Service
 public class PriceUpdaterService {
 
 	private Logger logger = LogManager.getLogger();
@@ -36,7 +38,7 @@ public class PriceUpdaterService {
 	@Autowired
 	AccountServiceFactory factory;
 
-	@Scheduled(fixedRate = 60000)
+	//@Scheduled(fixedRateString = "${timing.updatePrice}", initialDelayString = "${timing.initialDelay}")
 	public void updatePriceData() {
 
 		List<SwapService.Swap> swaps = swapService.getSwaps();
@@ -46,13 +48,14 @@ public class PriceUpdaterService {
 			List<PriceData> exchangeData = priceDataForAllExchanges.get(exchange);
 			ExchangeCache.Position position = swap.getSwapExecutor().getCache().addPriceData(exchangeData);
 			SwapExecutor.ResponseCode responseCode = null;
-			if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
-					position == ExchangeCache.Position.AboveDesiredRatio) {
-				responseCode = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, !swap.getSwapDescriptor().isActive());
-			}
 			if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_1 &&
-					position == ExchangeCache.Position.BelowDesiredRatio) {
+					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
 				responseCode = swap.getSwapExecutor().swapCoin1ToCoin2(exchangeData, !swap.getSwapDescriptor().isActive());
+			} else {
+				if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
+						position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
+					responseCode = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, !swap.getSwapDescriptor().isActive());
+				}
 			}
 			String valString = summarizeSwap(responseCode, swap);
 			if (valString != null && !valString.isEmpty()) {
@@ -123,8 +126,8 @@ public class PriceUpdaterService {
 		s.append("Setup:").append("-------------\n");
 		s.append("Desired Std Deviation: ").append(descriptor.getDesiredStdDev()).append("\n");
 		s.append("Cache Size: ").append(cache.getCacheSize()).append("\n");
-		s.append("Max ").append(descriptor.getCoin1()).append(" to buy: ").append(descriptor.getMaxAmountCoin1ToBuy()).append("\n");
-		s.append("Max ").append(descriptor.getCoin2()).append(" to buy: ").append(descriptor.getMaxAmountCoin2ToBuy()).append("\n");
+		s.append("Max ").append(descriptor.getCoin1()).append(" to buy: ").append(cache.getTicker1().getMaxQty()).append("\n");
+		s.append("Max ").append(descriptor.getCoin2()).append(" to buy: ").append(cache.getTicker2().getMaxQty()).append("\n");
 
 		s.append("\nCurrent Status (as of ").append(cache.getLatestUpdate()).append("):").append("-------------\n");
 
@@ -173,7 +176,9 @@ public class PriceUpdaterService {
 		for (short exchange : allExchanges) {
 			AccountService service = services.get(exchange);
 			List<PriceData> pd = service.getAllPrices();
-			updatedData.put(exchange, pd);
+			if (pd != null) {
+				updatedData.put(exchange, pd);
+			}
 		}
 		return updatedData;
 	}

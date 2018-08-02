@@ -18,10 +18,6 @@ public class SwapDescriptor {
 	private String coin2;
 	private short exchange;
 	private String commissionCoin;
-	@Column(name = "max_amount_coin1_to_buy")
-	private double maxAmountCoin1ToBuy;
-	@Column(name = "max_amount_coin2_to_buy")
-	private double maxAmountCoin2ToBuy;
 	private boolean active;
 	private double desiredStdDev;
 
@@ -67,24 +63,6 @@ public class SwapDescriptor {
 
 	public SwapDescriptor setCommissionCoin(String commissionCoin) {
 		this.commissionCoin = commissionCoin;
-		return this;
-	}
-
-	public double getMaxAmountCoin1ToBuy() {
-		return maxAmountCoin1ToBuy;
-	}
-
-	public SwapDescriptor setMaxAmountCoin1ToBuy(double maxAmountCoin1ToBuy) {
-		this.maxAmountCoin1ToBuy = maxAmountCoin1ToBuy;
-		return this;
-	}
-
-	public double getMaxAmountCoin2ToBuy() {
-		return maxAmountCoin2ToBuy;
-	}
-
-	public SwapDescriptor setMaxAmountCoin2ToBuy(double maxAmountCoin2ToBuy) {
-		this.maxAmountCoin2ToBuy = maxAmountCoin2ToBuy;
 		return this;
 	}
 

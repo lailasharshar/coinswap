@@ -19,24 +19,31 @@ public class Ticker {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	long tableId;
-
 	private String ticker;
-
 	private String base;
-
 	private short exchange;
-
 	private Date foundDate;
-
 	private Date retired;
+	private Date updatedDate;
+	private Double minQty;
+	private Double maxQty;
+	private Double stepSize;
+	private Double lastVolume;
 
 	public Ticker() {
-		this.foundDate = new Date();
+	}
+
+	public Double getLastVolume() {
+		return lastVolume;
+	}
+
+	public Ticker setLastVolume(Double lastVolume) {
+		this.lastVolume = lastVolume;
+		return this;
 	}
 
 	public Ticker(String tickerAndBase, short exchange, List<String> baseCurrencies) {
 		this.exchange = exchange;
-		this.foundDate = new Date();
 		if (baseCurrencies == null || tickerAndBase == null || tickerAndBase.isEmpty()) {
 			return;
 		}
@@ -105,6 +112,61 @@ public class Ticker {
 
 	public Ticker setRetired(Date retired) {
 		this.retired = retired;
+		return this;
+	}
+
+	public double getMinQty() {
+		return minQty;
+	}
+
+	public Ticker setMinQty(double minQty) {
+		this.minQty = minQty;
+		return this;
+	}
+
+	public double getMaxQty() {
+		return maxQty;
+	}
+
+	public Ticker setMaxQty(double maxQty) {
+		this.maxQty = maxQty;
+		return this;
+	}
+
+	public double getStepSize() {
+		return stepSize;
+	}
+
+	public Ticker setStepSize(double stepSize) {
+		this.stepSize = stepSize;
+		return this;
+	}
+
+	public String getTickerBase() {
+		return ticker + base;
+	}
+
+	public Date getUpdatedDate() {
+		return updatedDate;
+	}
+
+	public Ticker setUpdatedDate(Date updatedDate) {
+		this.updatedDate = updatedDate;
+		return this;
+	}
+
+	public Ticker setMinQty(Double minQty) {
+		this.minQty = minQty;
+		return this;
+	}
+
+	public Ticker setMaxQty(Double maxQty) {
+		this.maxQty = maxQty;
+		return this;
+	}
+
+	public Ticker setStepSize(Double stepSize) {
+		this.stepSize = stepSize;
 		return this;
 	}
 }

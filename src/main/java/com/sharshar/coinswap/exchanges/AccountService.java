@@ -5,9 +5,9 @@ import com.binance.api.client.domain.account.Order;
 import com.binance.api.client.domain.account.Trade;
 import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.PriceData;
+import com.sharshar.coinswap.beans.Ticker;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Created by lsharshar on 7/18/2018.
@@ -25,4 +25,6 @@ public interface AccountService {
 	Order checkOrderStatus(String ticker, String origClientOrderId);
 	boolean checkUp();
 	List<PriceData> getBackfillData(int cacheSize,  String coin, String baseCoin);
+	Double get24HourVolume(String ticker);
+	List<Ticker> getTickerDefinitions();
 }

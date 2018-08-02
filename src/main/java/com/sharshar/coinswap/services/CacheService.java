@@ -2,7 +2,9 @@ package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.components.ExchangeCache;
+import com.sharshar.coinswap.repositories.TickerRepository;
 import com.sharshar.coinswap.utils.AccountServiceFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,6 +31,9 @@ public class CacheService {
 	@Autowired
 	AccountServiceFactory factory;
 
+	@Autowired
+	TickerRepository tickerRepository;
+
 	@Value("${cacheSize}")
 	private int cacheSize;
 
@@ -37,8 +42,9 @@ public class CacheService {
 		caches = new ArrayList<>();
 	}
 
-	public ExchangeCache createCache(SwapDescriptor swapDescriptor, String baseCoin) {
-		ExchangeCache cache = applicationContext.getBean(ExchangeCache.class, swapDescriptor, cacheSize, baseCoin);
+	public ExchangeCache createCache(SwapDescriptor swapDescriptor, String baseCoin, Iterable<Ticker> tickers) {
+		ExchangeCache cache = applicationContext.getBean(ExchangeCache.class, swapDescriptor, cacheSize, baseCoin,
+				tickers);
 		caches.add(cache);
 		return cache;
 	}

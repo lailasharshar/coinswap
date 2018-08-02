@@ -5,9 +5,12 @@ import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.repositories.SwapRepository;
+import com.sharshar.coinswap.repositories.TickerRepository;
 import com.sharshar.coinswap.utils.AccountServiceFactory;
 import com.sharshar.coinswap.utils.CoinUtils;
 import com.sharshar.coinswap.utils.ScratchConstants;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
@@ -26,6 +29,7 @@ import java.util.stream.Collectors;
  */
 @Service
 public class SwapService {
+	Logger logger = LogManager.getLogger();
 	/**
 	 * An object that contains all the information about a swap in one place
 	 */
@@ -62,6 +66,9 @@ public class SwapService {
 	private SwapRepository swapRepository;
 
 	@Autowired
+	private TickerRepository tickerRepository;
+
+	@Autowired
 	private ApplicationContext applicationContext;
 
 	@Value("${defaultBaseCurrency}")
@@ -95,8 +102,8 @@ public class SwapService {
 	 * @param swapDescriptor - The database object
 	 * @return the object that knows how to execute the swap
 	 */
-	private Swap createComponent(SwapDescriptor swapDescriptor) {
-		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2())) {
+	public Swap createComponent(SwapDescriptor swapDescriptor) {
+		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), !swapDescriptor.isActive())) {
 			return null;
 		}
 		SwapExecutor component = applicationContext.getBean(SwapExecutor.class, swapDescriptor,
@@ -106,7 +113,11 @@ public class SwapService {
 		Swap swap = new Swap();
 		swap.setSwapDescriptor(swapDescriptor);
 		swap.setSwapExecutor(component);
-		component.setCache(cacheService.createCache(swapDescriptor, component.getBaseCoin()));
+		component.setCache(cacheService.createCache(swapDescriptor, component.getBaseCoin(), tickerRepository.findAll()));
+		component.backFillData();
+		if (!swapDescriptor.isActive()) {
+			component.seedMeMoney(1.0);
+		}
 		return swap;
 	}
 
@@ -147,7 +158,7 @@ public class SwapService {
 		if (match != null) {
 			return match.getSwapDescriptor();
 		}
-		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2())) {
+		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), !swapDescriptor.isActive())) {
 			return null;
 		}
 		Swap component = createComponent(swapDescriptor);
@@ -162,8 +173,15 @@ public class SwapService {
 	 * @return the best base coin to use
 	 */
 	private String deriveBaseCoin(AccountService accountService, String coin1, String coin2) {
-		List<PriceData> priceData = accountService.getAllPrices();
-		if (CoinUtils.hasPriceData(coin1 + defaultBaseCurrency, priceData)) {
+		List<PriceData> priceData = new ArrayList<>();
+		try {
+			priceData = accountService.getAllPrices();
+		} catch (Exception ex) {
+			logger.error("Unable to derive base coin, just using Bitcoin");
+			return "BTC";
+		}
+		if (CoinUtils.hasPriceData(coin1 + defaultBaseCurrency, priceData) &&
+			CoinUtils.hasPriceData(coin2 + defaultBaseCurrency, priceData)) {
 			return defaultBaseCurrency;
 		}
 		for (String baseCurrency : baseCurrencies) {
@@ -238,7 +256,7 @@ public class SwapService {
 	 * @param coin2    - the second coin
 	 * @return if it is a valid addition
 	 */
-	private boolean validAddition(short exchange, String coin1, String coin2) {
+	private boolean validAddition(short exchange, String coin1, String coin2, boolean simulate) {
 		// We don't want to add anything that could conflict with another swap
 		if (coin1 == null || coin2 == null || coin1.isEmpty() || coin2.isEmpty()) {
 			return false;
@@ -258,7 +276,7 @@ public class SwapService {
 				.collect(Collectors.toList());
 
 		// If there is no overlap, we're valid
-		if (similarOnes == null || similarOnes.isEmpty()) {
+		if (similarOnes == null || similarOnes.isEmpty() || simulate) {
 			return true;
 		}
 

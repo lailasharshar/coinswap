@@ -23,16 +23,21 @@ public class HistoricalDataPull {
 	@Value("${historic.dataUrl}")
 	private String dataUrl;
 
+	@Value("${historic.maxPull}")
+	private int maxPull;
+
 	public HistoryResponse getHistory(String coin, String refCurrency, Date endDate, String exchange, int numPulled) {
 		RestTemplate restTemplate = new RestTemplate();
 		ObjectMapper objectMapper = new ObjectMapper();
 		objectMapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+		if (numPulled <= 0) {
+			numPulled = maxPull;
+		}
 		String data = restTemplate.getForObject(dataUrl + "?fsym=" + coin + "&tsym=" + refCurrency +
 				"&limit=" + numPulled + "&toTs=" + endDate.getTime()/1000, String.class);
 		if (exchange != null && !exchange.isEmpty()) {
 			data += "&e=" + exchange;
 		}
-		System.out.println("Getting historical data from: " + data);
 		HistoryResponse response = null;
 		try {
 			response = objectMapper.readValue(data, HistoryResponse.class);

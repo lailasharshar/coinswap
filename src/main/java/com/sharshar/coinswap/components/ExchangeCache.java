@@ -2,6 +2,7 @@ package com.sharshar.coinswap.components;
 
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.utils.AnalysisUtils;
 import com.sharshar.coinswap.utils.CoinUtils;
 import com.sharshar.coinswap.utils.LimitedArrayList;
@@ -9,7 +10,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Service;
 
 import java.util.*;
 
@@ -24,64 +24,149 @@ import static com.sharshar.coinswap.components.ExchangeCache.Position.*;
 @Component
 @Scope("prototype")
 public class ExchangeCache {
-	Logger logger = LogManager.getLogger();
+	private Logger logger = LogManager.getLogger();
 
-	enum Position {
-		InvalidData,
-		InsufficientData,
-		WithinDesiredRatio,
-		AboveDesiredRatio,
-		BelowDesiredRatio
+	public enum Position {
+		INVALID_DATA,
+		INSUFFICIENT_DATA,
+		WITHIN_DESIRED_RATIO,
+		ABOVE_DESIRED_RATIO,
+		BELOW_DESIRED_RATIO
 	}
 
-	SwapDescriptor swapDescriptor;
+	private SwapDescriptor swapDescriptor;
 
 	private short exchange;
-	private String ticker1;
-	private String ticker2;
+	private Ticker ticker1;
+	private Ticker ticker2;
+	private Ticker commissionTicker;
 	private double lastStandardDeviation;
 	private double lastMeanRatio;
 	private double lowRatio;
 	private double highRatio;
 	private int cacheSize;
+	private Iterable<Ticker> allTickers;
 
-	private Map<String, List<PriceData>> priceCache;
+	private Map<Ticker, List<PriceData>> priceCache;
 
-	public ExchangeCache(SwapDescriptor swapDescriptor, int cacheSize, String baseCoin) {
+	private Ticker loadTicker(String coin, String baseCoin) {
+		if (allTickers == null) {
+			return null;
+		}
+
+		if (coin.equals(baseCoin)) {
+			return new Ticker().setFoundDate(new Date(0)).setExchange(exchange).setTicker(baseCoin).setBase(baseCoin);
+		}
+		for (Ticker ticker : allTickers) {
+			if (ticker.getExchange() == exchange && ticker.getRetired() == null
+					&& ticker.getTicker().equalsIgnoreCase(coin) && ticker.getBase().equalsIgnoreCase(baseCoin)) {
+				return ticker;
+			}
+		}
+		return null;
+	}
+
+	public ExchangeCache(SwapDescriptor swapDescriptor, int cacheSize, String baseCoin, Iterable<Ticker> allTickers) {
+		// Init variables
 		this.swapDescriptor = swapDescriptor;
-		this.ticker1 = swapDescriptor.getCoin1() + baseCoin;
-		this.ticker2 = swapDescriptor.getCoin2() + baseCoin;
 		this.exchange = swapDescriptor.getExchange();
 		this.cacheSize = cacheSize;
+		this.allTickers = allTickers;
 		if (this.cacheSize == 0) {
 			this.cacheSize = 100;
 		}
+
+		// Map them to real ticker information and create an array for the data for each
+		this.ticker1 = loadTicker(swapDescriptor.getCoin1(), baseCoin);
+		this.ticker2 = loadTicker(swapDescriptor.getCoin2(), baseCoin);
+		this.commissionTicker = loadTicker(swapDescriptor.getCommissionCoin(), baseCoin);
+
 		priceCache = new HashMap<>();
 		priceCache.put(ticker1, new LimitedArrayList<>(this.cacheSize));
 		priceCache.put(ticker2, new LimitedArrayList<>(this.cacheSize));
+		priceCache.put(commissionTicker, new LimitedArrayList<>(this.cacheSize));
+	}
+
+	public int getAmountCachePopulated() {
+		if (priceCache == null || priceCache.get(ticker1) == null) {
+			return 0;
+		}
+		return priceCache.get(ticker1).size();
 	}
 
 	public Position addPriceData(List<PriceData> priceData) {
 		if (priceData == null) {
 			logger.error("Invalid price data added to cache");
-			return InvalidData;
+			return INVALID_DATA;
 		}
-		PriceData currentPd1 = CoinUtils.getPriceData(ticker1, priceData);
-		PriceData currentPd2 = CoinUtils.getPriceData(ticker2, priceData);
+		Date now = new Date();
+		PriceData sameAsBasePd = new PriceData().setExchange(swapDescriptor.getExchange()).setPrice(1.0)
+				.setTicker(ticker1.getBase() + ticker1.getBase()).setUpdateTime(now);
+
+		PriceData currentPd1;
+		if (ticker1.getTickerBase().equalsIgnoreCase(ticker1.getBase() + ticker1.getBase())) {
+			currentPd1 = sameAsBasePd;
+		} else {
+			currentPd1 = CoinUtils.getPriceData(ticker1.getTickerBase(), priceData);
+		}
+		PriceData currentPd2;
+		if (ticker2.getTickerBase().equalsIgnoreCase(ticker2.getBase() + ticker2.getBase())) {
+			currentPd2 = sameAsBasePd;
+		} else {
+			currentPd2 = CoinUtils.getPriceData(ticker2.getTickerBase(), priceData);
+		}
+		PriceData commissionPd;
+		if (commissionTicker.getTickerBase().equalsIgnoreCase(commissionTicker.getBase() + commissionTicker.getBase())) {
+			commissionPd = sameAsBasePd;
+		} else {
+			commissionPd = CoinUtils.getPriceData(commissionTicker.getTickerBase(), priceData);
+		}
 		List<PriceData> pd1List = priceCache.get(ticker1);
 		List<PriceData> pd2List = priceCache.get(ticker2);
+		List<PriceData> commissionPdList = priceCache.get(commissionTicker);
 		pd1List.add(currentPd1);
 		pd2List.add(currentPd2);
+		commissionPdList.add(commissionPd);
 		if (pd1List.size() < cacheSize) {
-			logger.info("Insufficient price data to swap");
-			return InsufficientData;
+			logger.debug("Insufficient price data to swap");
+			return INSUFFICIENT_DATA;
 		}
 		return updateStats(currentPd1, currentPd2, swapDescriptor.getDesiredStdDev());
 	}
 
+	public void bulkLoadData(String ticker, List<PriceData> pd) {
+		if (pd == null) {
+			logger.error("Invalid price data added to cache");
+			return;
+		}
+		List<PriceData> tickerPd = priceCache.get(getTickerObjFromString(ticker));
+		if (tickerPd == null) {
+			logger.error("Invalid ticker: " + ticker + " passed to method. Must be " + ticker1.getTickerBase() +
+					" or " + ticker2.getTickerBase());
+			return;
+		}
+		// Keep add, not add all since that's the method that checks to see if it's over the size limit
+		for (PriceData p : pd) {
+			tickerPd.add(p);
+		}
+	}
+
+	private Ticker getTickerObjFromString(String ticker) {
+		if (ticker.equalsIgnoreCase(ticker1.getTicker() + ticker1.getBase())) {
+			return ticker1;
+		}
+		if (ticker.equalsIgnoreCase(ticker2.getTicker() + ticker2.getBase())) {
+			return ticker2;
+		}
+		if (ticker.equalsIgnoreCase(commissionTicker.getTicker() + commissionTicker.getBase())) {
+			return commissionTicker;
+		}
+		return null;
+	}
+
 	private Position updateStats(PriceData currentPd1, PriceData currentPd2, double desiredStdDeviation) {
-		if (priceCache.size() < cacheSize) {
-			return InsufficientData;
+		if (priceCache.get(ticker1).size() < cacheSize || priceCache.get(ticker2).size() < cacheSize) {
+			return INSUFFICIENT_DATA;
 		}
 		List<PriceData> pd1List = priceCache.get(ticker1);
 		List<PriceData> pd2List = priceCache.get(ticker2);
@@ -97,12 +182,12 @@ public class ExchangeCache {
 		highRatio = lastMeanRatio + (desiredStdDeviation * lastStandardDeviation);
 		logger.debug("Mean ratio: " + lastMeanRatio + ", Std Dev: " + lastStandardDeviation
 				+ ", low value: " + lowRatio + ", high value: " + highRatio);
-		Position position = WithinDesiredRatio;
+		Position position = WITHIN_DESIRED_RATIO;
 		if (currentRatio < lowRatio && lowRatio > 0) {
-			return BelowDesiredRatio;
+			return BELOW_DESIRED_RATIO;
 		}
 		if (currentRatio > highRatio && highRatio > 0) {
-			return AboveDesiredRatio;
+			return ABOVE_DESIRED_RATIO;
 		}
 		return position;
 	}
@@ -115,6 +200,7 @@ public class ExchangeCache {
 	public void clear() {
 		priceCache.get(ticker1).clear();
 		priceCache.get(ticker2).clear();
+		priceCache.get(commissionTicker).clear();
 	}
 
 	public List<PriceData> getTicker1Data() {
@@ -125,6 +211,10 @@ public class ExchangeCache {
 		return priceCache.get(ticker2);
 	}
 
+	public List<PriceData> getCommissionData() {
+		return priceCache.get(commissionTicker);
+	}
+
 	public int getCacheSize() {
 		return cacheSize;
 	}
@@ -133,10 +223,11 @@ public class ExchangeCache {
 		this.cacheSize = cacheSize;
 		changeOutList(ticker1, cacheSize);
 		changeOutList(ticker2, cacheSize);
+		changeOutList(commissionTicker, cacheSize);
 		return this;
 	}
 
-	private void changeOutList(String ticker, int newSize) {
+	private void changeOutList(Ticker ticker, int newSize) {
 		List<PriceData> oldData = priceCache.get(ticker);
 		List<PriceData> newData = new LimitedArrayList<>(newSize);
 		// If we are downsizing, remove older data
@@ -155,12 +246,16 @@ public class ExchangeCache {
 		return exchange;
 	}
 
-	public String getTicker1() {
+	public Ticker getTicker1() {
 		return ticker1;
 	}
 
-	public String getTicker2() {
+	public Ticker getTicker2() {
 		return ticker2;
+	}
+
+	public Ticker getCommissionTicker() {
+		return commissionTicker;
 	}
 
 	public double getLastStandardDeviation() {
@@ -185,6 +280,10 @@ public class ExchangeCache {
 	}
 
 	public PriceData getLastPriceData(String ticker) {
-		return Collections.max(priceCache.get(ticker), Comparator.comparing(PriceData::getUpdateTime));
+		List<PriceData> pd = priceCache.get(getTickerObjFromString(ticker));
+		if (pd == null || pd.isEmpty()) {
+			return null;
+		}
+		return Collections.max(pd, Comparator.comparing(PriceData::getUpdateTime));
 	}
 }
