@@ -6,6 +6,7 @@ import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.utils.AnalysisUtils;
 import com.sharshar.coinswap.utils.CoinUtils;
 import com.sharshar.coinswap.utils.LimitedArrayList;
+import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.context.annotation.Scope;
@@ -36,7 +37,7 @@ public class ExchangeCache {
 
 	private SwapDescriptor swapDescriptor;
 
-	private short exchange;
+	private ScratchConstants.Exchange exchange;
 	private Ticker ticker1;
 	private Ticker ticker2;
 	private Ticker commissionTicker;
@@ -66,7 +67,7 @@ public class ExchangeCache {
 		return null;
 	}
 
-	public ExchangeCache(SwapDescriptor swapDescriptor, int cacheSize, String baseCoin, Iterable<Ticker> allTickers) {
+	public ExchangeCache(SwapDescriptor swapDescriptor, int cacheSize, Iterable<Ticker> allTickers) {
 		// Init variables
 		this.swapDescriptor = swapDescriptor;
 		this.exchange = swapDescriptor.getExchange();
@@ -77,9 +78,9 @@ public class ExchangeCache {
 		}
 
 		// Map them to real ticker information and create an array for the data for each
-		this.ticker1 = loadTicker(swapDescriptor.getCoin1(), baseCoin);
-		this.ticker2 = loadTicker(swapDescriptor.getCoin2(), baseCoin);
-		this.commissionTicker = loadTicker(swapDescriptor.getCommissionCoin(), baseCoin);
+		this.ticker1 = loadTicker(swapDescriptor.getCoin1(), swapDescriptor.getBaseCoin());
+		this.ticker2 = loadTicker(swapDescriptor.getCoin2(), swapDescriptor.getBaseCoin());
+		this.commissionTicker = loadTicker(swapDescriptor.getCommissionCoin(), swapDescriptor.getBaseCoin());
 
 		priceCache = new HashMap<>();
 		priceCache.put(ticker1, new LimitedArrayList<>(this.cacheSize));
@@ -99,35 +100,16 @@ public class ExchangeCache {
 			logger.error("Invalid price data added to cache");
 			return INVALID_DATA;
 		}
-		Date now = new Date();
-		PriceData sameAsBasePd = new PriceData().setExchange(swapDescriptor.getExchange()).setPrice(1.0)
-				.setTicker(ticker1.getBase() + ticker1.getBase()).setUpdateTime(now);
+		PriceData currentPd1 = CoinUtils.getPriceData(ticker1.getTickerBase(), priceData);
+		priceCache.get(ticker1).add(currentPd1);
 
-		PriceData currentPd1;
-		if (ticker1.getTickerBase().equalsIgnoreCase(ticker1.getBase() + ticker1.getBase())) {
-			currentPd1 = sameAsBasePd;
-		} else {
-			currentPd1 = CoinUtils.getPriceData(ticker1.getTickerBase(), priceData);
-		}
-		PriceData currentPd2;
-		if (ticker2.getTickerBase().equalsIgnoreCase(ticker2.getBase() + ticker2.getBase())) {
-			currentPd2 = sameAsBasePd;
-		} else {
-			currentPd2 = CoinUtils.getPriceData(ticker2.getTickerBase(), priceData);
-		}
-		PriceData commissionPd;
-		if (commissionTicker.getTickerBase().equalsIgnoreCase(commissionTicker.getBase() + commissionTicker.getBase())) {
-			commissionPd = sameAsBasePd;
-		} else {
-			commissionPd = CoinUtils.getPriceData(commissionTicker.getTickerBase(), priceData);
-		}
-		List<PriceData> pd1List = priceCache.get(ticker1);
-		List<PriceData> pd2List = priceCache.get(ticker2);
-		List<PriceData> commissionPdList = priceCache.get(commissionTicker);
-		pd1List.add(currentPd1);
-		pd2List.add(currentPd2);
-		commissionPdList.add(commissionPd);
-		if (pd1List.size() < cacheSize) {
+		PriceData currentPd2 = CoinUtils.getPriceData(ticker2.getTickerBase(), priceData);
+		priceCache.get(ticker2).add(currentPd2);
+
+		PriceData commissionPd = CoinUtils.getPriceData(commissionTicker.getTickerBase(), priceData);
+		priceCache.get(commissionTicker).add(commissionPd);
+
+		if (priceCache.get(ticker1).size() < cacheSize) {
 			logger.debug("Insufficient price data to swap");
 			return INSUFFICIENT_DATA;
 		}
@@ -174,12 +156,13 @@ public class ExchangeCache {
 		List<Double> ratioList = AnalysisUtils.getRatioList(pd1List, pd2List);
 		lastMeanRatio = AnalysisUtils.getMean(ratioList);
 		lastStandardDeviation = AnalysisUtils.getStdDev(ratioList, lastMeanRatio);
+		double valueDistance = desiredStdDeviation * lastStandardDeviation;
 		logger.debug("Mean ratio: " + lastMeanRatio + ", Std Dev: " + lastStandardDeviation);
-		lowRatio = lastMeanRatio - (desiredStdDeviation * lastStandardDeviation);
+		lowRatio = lastMeanRatio - valueDistance;
 		if (lowRatio < 0) {
 			lowRatio = 0;
 		}
-		highRatio = lastMeanRatio + (desiredStdDeviation * lastStandardDeviation);
+		highRatio = lastMeanRatio + valueDistance;
 		logger.debug("Mean ratio: " + lastMeanRatio + ", Std Dev: " + lastStandardDeviation
 				+ ", low value: " + lowRatio + ", high value: " + highRatio);
 		Position position = WITHIN_DESIRED_RATIO;
@@ -242,7 +225,7 @@ public class ExchangeCache {
 		priceCache.put(ticker, newData);
 	}
 
-	public short getExchange() {
+	public ScratchConstants.Exchange getExchange() {
 		return exchange;
 	}
 

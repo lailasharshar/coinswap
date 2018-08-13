@@ -8,6 +8,8 @@ import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.beans.Ticker;
+import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
+import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.utils.CoinUtils;
 import org.apache.logging.log4j.LogManager;
@@ -17,8 +19,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Date;
+import java.text.SimpleDateFormat;
 import java.util.List;
 
 /**
@@ -37,6 +38,14 @@ public class SwapExecutor {
 	}
 
 	private ExchangeCache cache;
+
+	private class CoinValues {
+		double sellCoin;
+		double sellPrice;
+		double buyCoin;
+		double buyPrice;
+		double commCoin;
+	}
 
 	public enum ResponseCode {
 		SELL_ORDER_NEW,
@@ -66,7 +75,7 @@ public class SwapExecutor {
 		NOT_ENOUGH_TO_SELL,
 		NOT_ENOUGH_TO_BUY,
 		OUT_OF_MONEY_COIN1,
-		OUT_OF_MONEY_COIN2
+		COIN_IS_BASECOIN, OUT_OF_MONEY_COIN2
 	}
 
 	public enum CurrentSwapState {
@@ -82,47 +91,30 @@ public class SwapExecutor {
 	private double amountCoin2OwnedFree;
 	private double amountBaseCoinOwnedFree;
 	private double amountCommissionAssetFree;
-	private String baseCoin;
 
 	private AccountService accountService;
 
-	public SwapExecutor(SwapDescriptor swapDescriptor, AccountService accountService, String baseCoin) {
+	public SwapExecutor(SwapDescriptor swapDescriptor, AccountService accountService) {
 		this.swapDescriptor = swapDescriptor;
 		this.accountService = accountService;
 		this.currentSwapState = CurrentSwapState.OWNS_COIN_1;
-		this.baseCoin = baseCoin;
 	}
 
+	/**
+	 * When we first start the application, we have no historical trends when it comes to mean/std deviation
+	 * of the two currencies. Originally, I just had it wait until the cache was filled to a specified number
+	 * and started trading after that. No need to do that. Historical data is known (at least hourly). Prefill
+	 * the cache with those values.
+	 */
 	public void backFillData() {
-		Date now = new Date();
-		List<PriceData> sameAsBaseData = new ArrayList<>();
-		PriceData sameAsBasePd = new PriceData().setExchange(swapDescriptor.getExchange()).setPrice(1.0)
-				.setTicker(getBaseCoin() + getBaseCoin()).setUpdateTime(now);
-		for (int i = 0; i<cache.getCacheSize(); i++) {
-			sameAsBaseData.add(sameAsBasePd);
-		}
-		if (swapDescriptor.getCoin1().equalsIgnoreCase(getBaseCoin())) {
-			cache.bulkLoadData(getBaseCoin() + getBaseCoin(), sameAsBaseData);
-		} else {
-			List<PriceData> pd1 = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCoin1(), getBaseCoin());
-			cache.bulkLoadData(swapDescriptor.getCoin1() + getBaseCoin(), pd1);
-		}
-		if (swapDescriptor.getCoin2().equalsIgnoreCase(getBaseCoin())) {
-			cache.bulkLoadData(getBaseCoin() + getBaseCoin(), sameAsBaseData);
-		} else {
-			List<PriceData> pd2 = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCoin2(), getBaseCoin());
-			cache.bulkLoadData(swapDescriptor.getCoin2() + getBaseCoin(), pd2);
-		}
-		if (swapDescriptor.getCommissionCoin().equalsIgnoreCase(getBaseCoin())) {
-			cache.bulkLoadData(getBaseCoin() + getBaseCoin(), sameAsBaseData);
-		} else {
-			List<PriceData> comm = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCommissionCoin(), getBaseCoin());
-			cache.bulkLoadData(swapDescriptor.getCommissionCoin() + getBaseCoin(), comm);
-		}
-	}
+		List<PriceData> pd1 = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCoin1(), swapDescriptor.getBaseCoin());
+		cache.bulkLoadData(swapDescriptor.getCoin1() + swapDescriptor.getBaseCoin(), pd1);
 
-	public String getBaseCoin() {
-		return baseCoin;
+		List<PriceData> pd2 = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCoin2(), swapDescriptor.getBaseCoin());
+		cache.bulkLoadData(swapDescriptor.getCoin2() + swapDescriptor.getBaseCoin(), pd2);
+
+		List<PriceData> comm = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCommissionCoin(), swapDescriptor.getBaseCoin());
+		cache.bulkLoadData(swapDescriptor.getCommissionCoin() + swapDescriptor.getBaseCoin(), comm);
 	}
 
 	/**
@@ -140,7 +132,7 @@ public class SwapExecutor {
 		if (swapDescriptor.getCoin2() == null || swapDescriptor.getCoin2().isEmpty()) {
 			return ResponseCode.NO_COIN_2_DEFINED;
 		}
-		if (baseCoin == null || baseCoin.isEmpty()) {
+		if (swapDescriptor.getBaseCoin() == null || swapDescriptor.getBaseCoin().isEmpty()) {
 			return ResponseCode.NO_BASE_COIN_DEFINED;
 		}
 		if (swapDescriptor.getCommissionCoin() == null || swapDescriptor.getCommissionCoin().isEmpty()) {
@@ -168,49 +160,92 @@ public class SwapExecutor {
 	 * @return the response code to the trade. This will almost always be TRANSACTION_SUCCESSFUL unless the component
 	 * is not correctly initialized
 	 */
-	private ResponseCode simulateCoinSwap(double amountCoinAToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
+	private TradeAction simulateCoinSwap(double amountCoinAToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
+		TradeAction action = new TradeAction();
+		if (coinB.getTicker().equalsIgnoreCase(swapDescriptor.getBaseCoin()) ||
+				coinA.getTicker().equalsIgnoreCase(swapDescriptor.getBaseCoin())) {
+			action.setResponseCode(ResponseCode.COIN_IS_BASECOIN);
+			return action;
+		}
 		ResponseCode initErrors = getAnyInitializationErrors();
 		if (initErrors != null) {
-			return initErrors;
+			action.setResponseCode(initErrors);
+			return action;
 		}
-		double coinAPrice = 1.0;
+		CoinValues coinValues = getAdjustmentAmounts(coinA, amountCoinAToSell, coinB, cache.getCommissionTicker(), priceData);
 
 		// If we have nothing to sell :( return
-		if (amountCoinAToSell < coinA.getMinQty()) {
-			return ResponseCode.NOT_ENOUGH_TO_SELL;
+		if (coinValues.sellCoin < coinA.getMinQty()) {
+			action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_SELL);
+			return action;
 		}
 
-		/* We'll have to sell first */
-
-		// No reason to sell if the base coin is the same as coinA
-		if (!coinA.getTicker().equalsIgnoreCase(getBaseCoin())) {
-			// Do the trade
-			coinAPrice = CoinUtils.getPrice(coinA.getTickerBase(), priceData);
-			double correctedAmount = correctedAmount(coinA, amountCoinAToSell);
-			logger.info("Sell order filled for : " + coinA.getTickerBase() + " (" + String.format("%.6f", correctedAmount) + ") on " + priceData.get(0).getUpdateTime());
-			modifyAmountFree(coinA, -1 * correctedAmount);
-			amountCommissionAssetFree -= getCommissionNeeded(coinA, amountCoinAToSell, accountService.getDefaultTransactionFee(), priceData);
-		} else {
-			amountBaseCoinOwnedFree += amountCoinAToSell * coinAPrice;
+		if (coinValues.buyCoin < coinB.getMinQty()) {
+			action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_BUY);
+			return action;
 		}
 
-		/* Then we buy */
+		modifyAmountFree(coinA, -1 * coinValues.sellCoin);
+		modifyAmountFree(coinB, coinValues.buyCoin);
 
-		// No reason to buy if the base coin is the same as coinB
-		if (!coinB.getTicker().equalsIgnoreCase(getBaseCoin())) {
-			// Figure out how much we can buy
-			double amountCoinToBuy = (coinAPrice * amountCoinAToSell) / CoinUtils.getPrice(coinB.getTickerBase(), priceData);
-			if (amountCoinToBuy < coinB.getMinQty()) {
-				return ResponseCode.NOT_ENOUGH_TO_BUY;
-			}
+		amountCommissionAssetFree -= coinValues.commCoin;
 
-			double correctedAmount = correctedAmount(coinB, amountCoinToBuy);
-			logger.info("Buy order filled for : " + coinB.getTickerBase() + " (" + String.format("%.6f", correctedAmount) + ") on " + priceData.get(0).getUpdateTime());
-			modifyAmountFree(coinB, correctedAmount);
-			amountCommissionAssetFree -= getCommissionNeeded(coinB, amountCoinToBuy, accountService.getDefaultTransactionFee(), priceData);
+		SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm");
+		String actionDate = sdf.format(priceData.get(0).getUpdateTime());
+		logger.debug(actionDate + " Sell   : " + coinA.getTickerBase() + " " + String.format("%.6f", coinValues.sellCoin)
+				+ " @ " + String.format("%.6f", coinValues.sellPrice) + " (" + String.format("%.6f", (coinValues.sellCoin * coinValues.sellPrice)) + ")");
+		logger.debug(actionDate + " Buy    : " + coinB.getTickerBase() + " " + String.format("%.6f", coinValues.buyCoin)
+				+ " @ " + String.format("%.6f", coinValues.buyPrice) + " (" + String.format("%.6f", (coinValues.buyCoin * coinValues.buyPrice)) + ")");
+		logger.debug("Amount Coin1: " +  String.format("%.6f", amountCoin1OwnedFree) +
+				", Amount Coin2: " +  String.format("%.6f", amountCoin2OwnedFree) +
+				", Commisison Coin: " +  String.format("%.6f", amountCommissionAssetFree));
+
+		action.setResponseCode(ResponseCode.TRANSACTION_SUCCESSFUL);
+		action.setAmountCoin1(amountCoin1OwnedFree);
+		action.setAmountCoin2(amountCoin2OwnedFree);
+		action.setTradeDate(priceData.get(0).getUpdateTime());
+		return action;
+	}
+
+	/**
+	 * We are "swapping" coins. The original assumption was that we were going to sell all of one and use
+	 * those proceeds to buy as much of the second currency as we can. The problem with that is that we can't
+	 * always buy in the increments resulting from that or at the necessary volume. For example, if we have
+	 * $1000 of coin one, we want to sell it and buy $1000 of coin two, but we can can only buy $500 of coin two,
+	 * we want to know how much of coin one needs to be used to buy that $500 of coin two and since it's a smaller
+	 * transaction, what the expected transaction fee will be for transferring $500 from coin one to coin two
+	 *
+	 * @param tickerToSell - the ticker we want to sell
+	 * @param amountToSell - the amount we want to sell of coin 1
+	 * @param tickerToBuy - the ticker we want to buy
+	 * @param commissionCoin - the commission coin
+	 * @param priceData - the latest price data to perform conversions between the three tickers
+	 * @return the corrected values to sell, buy and estimated commissions
+	 */
+	private CoinValues getAdjustmentAmounts(Ticker tickerToSell, double amountToSell, Ticker tickerToBuy,
+										   Ticker commissionCoin, List<PriceData> priceData) {
+		double sellPrice = CoinUtils.getPrice(tickerToSell.getTickerBase(), priceData);
+		double buyPrice = CoinUtils.getPrice(tickerToBuy.getTickerBase(), priceData);
+		double coinToSellAmount = correctedAmount(tickerToSell, amountToSell, swapDescriptor.getMaxPercentVolume());
+		double amountCoinToBuy = (sellPrice * amountToSell) / buyPrice;
+		double correctedAmountCoinToBuy = correctedAmount(tickerToBuy, amountCoinToBuy, swapDescriptor.getMaxPercentVolume());
+		if (correctedAmountCoinToBuy < amountCoinToBuy) {
+			double refundOfBuy = amountCoinToBuy - correctedAmountCoinToBuy;
+			double refundOfSell = (buyPrice * refundOfBuy) / sellPrice;
+			coinToSellAmount = correctedAmount(tickerToSell, amountToSell - refundOfSell, swapDescriptor.getMaxPercentVolume());
 		}
+		CoinValues cv = new CoinValues();
+		cv.buyCoin = correctedAmountCoinToBuy;
+		cv.buyPrice = buyPrice;
+		cv.sellPrice = sellPrice;
+		cv.sellCoin = coinToSellAmount;
 
-		return ResponseCode.TRANSACTION_SUCCESSFUL;
+		double priceForCommissionCoin = CoinUtils.getPrice(commissionCoin.getTickerBase(), priceData);
+		double transFee = accountService.getDefaultTransactionFee();
+		cv.commCoin = (cv.sellCoin * sellPrice * transFee) / priceForCommissionCoin +
+				(cv.buyCoin * buyPrice * transFee) / priceForCommissionCoin;
+
+		return cv;
 	}
 
 	/**
@@ -224,78 +259,86 @@ public class SwapExecutor {
 	 *                          coinB we can buy
 	 * @return the response code to the trade
 	 */
-	private ResponseCode coinSwap(double amountCoinAToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
+	private TradeAction coinSwap(double amountCoinAToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
 		System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Live swap !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 		if (true) {
 			// DON'T DO IT UNTIL WE'RE READY
 			return null;
 		}
+		TradeAction action = new TradeAction();
+		if (coinB.getTicker().equalsIgnoreCase(swapDescriptor.getBaseCoin()) ||
+				coinA.getTicker().equalsIgnoreCase(swapDescriptor.getBaseCoin())) {
+			action.setResponseCode(ResponseCode.COIN_IS_BASECOIN);
+			return action;
+		}
 		ResponseCode initErrors = getAnyInitializationErrors();
 		if (initErrors != null) {
-			return initErrors;
+			action.setResponseCode(initErrors);
+			return action;
 		}
+		CoinValues coinValues = getAdjustmentAmounts(coinA, amountCoinAToSell, coinB, cache.getCommissionTicker(), priceData);
 
-		double amountToSell = correctedAmount(coinA, amountCoinAToSell);
 		// If we have nothing to sell :( return
-		if (amountCoin1OwnedFree < coinA.getMinQty()) {
-			return ResponseCode.NOT_ENOUGH_TO_SELL;
+		if (coinValues.sellCoin < coinA.getMinQty()) {
+			action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_SELL);
+			return action;
 		}
 
-		/* We'll have to sell first */
+		if (coinValues.buyCoin < coinB.getMinQty()) {
+			action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_BUY);
+			return action;
+		}
 
-		// No reason to sell if the base coin is the same as coin1
-		if (!coinA.getTicker().equalsIgnoreCase(getBaseCoin())) {
+		if (coinValues.commCoin > 1.2 * amountCommissionAssetFree) {
+			action.setResponseCode(ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY);
+			return action;
+		}
 
-			// Make sure we have enough coin in commissions to do the trade
-			boolean haveEnoughForCommission = haveEnoughForCommission(coinA, amountToSell,
-					accountService.getDefaultTransactionFee(), priceData);
-			if (!haveEnoughForCommission) {
-				return ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY;
+		/* first we sell */
+
+		ResponseCode sellResponse = sellCoin(coinA, coinValues.sellCoin);
+		if (sellResponse == ResponseCode.SELL_ORDER_FILLED) {
+			logger.info("Sell order filled for: " + coinA.getTickerBase());
+			if (!loadBalances()) {
+				action.setResponseCode(ResponseCode.UNABLE_TO_UPDATE_COIN_BALANCES);
+				return action;
 			}
-
-			// Do the trade
-			ResponseCode sellResponse = sellCoin(coinA, amountToSell);
-			if (sellResponse == ResponseCode.SELL_ORDER_FILLED) {
-				logger.info("Sell order filled for: " + coinA.getTickerBase());
-				if (!loadBalances()) {
-					return ResponseCode.UNABLE_TO_UPDATE_COIN_BALANCES;
-				}
-			} else {
-				return sellResponse;
-			}
+		} else {
+			action.setResponseCode(sellResponse);
+			return action;
 		}
 
 		/* Then we buy */
 
-		// No reason to buy if the base coin is the same as coinB
-		if (!coinB.getTicker().equalsIgnoreCase(getBaseCoin())) {
-			// Figure out how much we can buy
-			double amountCoinToBuy = (CoinUtils.getPrice(coinA.getTickerBase(), priceData) * amountToSell) / CoinUtils.getPrice(coinB.getTickerBase(), priceData);
-			if (amountCoinToBuy < coinB.getMinQty()) {
-				return ResponseCode.NOT_ENOUGH_TO_BUY;
+		ResponseCode buyResponse = buyCoin(coinB, coinValues.buyCoin);
+		if (buyResponse == ResponseCode.BUY_ORDER_FILLED) {
+			logger.info("Buy order filled for: " + coinB.getTickerBase());
+			if (!loadBalances()) {
+				action.setResponseCode(ResponseCode.UNABLE_TO_UPDATE_COIN_BALANCES);
+				return action;
 			}
-			amountCoinToBuy = correctedAmount(coinB, amountCoinToBuy);
-
-			// Make sure we have enough coin in commission to do the trade
-			boolean haveEnoughForCommission = haveEnoughForCommission(coinB, amountCoinToBuy, accountService.getDefaultTransactionFee(), priceData);
-			if (!haveEnoughForCommission) {
-				return ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY;
-			}
-
-			ResponseCode buyResponse = buyCoin(coinB, amountCoinToBuy);
-			if (buyResponse == ResponseCode.BUY_ORDER_FILLED) {
-				logger.info("Buy order filled for: " + coinB.getTickerBase());
-				if (!loadBalances()) {
-					return ResponseCode.UNABLE_TO_UPDATE_COIN_BALANCES;
-				}
-			} else {
-				return buyResponse;
-			}
+		} else {
+			action.setResponseCode(buyResponse);
+			return action;
 		}
-		return ResponseCode.TRANSACTION_SUCCESSFUL;
+		action.setResponseCode(ResponseCode.TRANSACTION_SUCCESSFUL);
+		action.setAmountCoin1(amountCoin1OwnedFree);
+		action.setAmountCoin2(amountCoin2OwnedFree);
+		action.setTradeDate(priceData.get(0).getUpdateTime());
+		return action;
 	}
 
-	private double correctedAmount(Ticker coin, double amount) {
+	/**
+	 * Given the amount of a coin we wish to buy/sell, calculate the amount that is
+	 * allowed. We need to make sure we don't swamp the exchange with large orders
+	 * for small coins and we do it in an allowed increments
+	 *
+	 * @param coin - the coin to buy/sell
+	 * @param amount - the amount we want to buy/sell
+	 * @param maxVolume - the max percent of daily volume we are willing to go up to
+	 * @return the corrected amount
+	 */
+	private double correctedAmount(Ticker coin, double amount, double maxVolume) {
 		if (coin.getTicker().equalsIgnoreCase(coin.getBase())) {
 			return amount;
 		}
@@ -308,7 +351,29 @@ public class SwapExecutor {
 		if (amount < coin.getMinQty() && coin.getMinQty() > 0) {
 			return 0;
 		}
+		amountToTransact = correctForVolume(coin, amountToTransact, maxVolume);
 		return correctForStep(coin.getStepSize(), amountToTransact);
+	}
+
+	/**
+	 * We don't want to trade too many at a time. You can't swamp the market and take over the
+	 * currency (Oh, to have such problems). We will only use a percentage of the daily volume
+	 *
+	 * @param coin - The coin we want to buy/sell
+	 * @param amountToTransact - The amount we wish to buy/sell
+	 * @param amountOfVolume - The percentage of volume we are willing to go up to
+	 * @return the amount we can buy/sell based on our volume restrictions
+	 */
+	private double correctForVolume(Ticker coin, double amountToTransact, double amountOfVolume) {
+		Double lastVolume = coin.getLastVolume();
+		if (lastVolume == null || lastVolume == 0) {
+			return amountToTransact;
+		}
+		double maxAmount = amountOfVolume * lastVolume;
+		if (amountToTransact > maxAmount) {
+			return maxAmount;
+		}
+		return amountToTransact;
 	}
 
 	/**
@@ -352,17 +417,19 @@ public class SwapExecutor {
 	 * @param simulate  - if we want to do it for real, or just simulate it
 	 * @return the response code
 	 */
-	public ResponseCode swapCoin1ToCoin2(List<PriceData> priceData, boolean simulate) {
-		ResponseCode code;
+	public TradeAction swapCoin1ToCoin2(List<PriceData> priceData, boolean simulate) {
+		TradeAction action;
 		if (simulate) {
-			code = simulateCoinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
+			action = simulateCoinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
+			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_2);
 		} else {
-			code = coinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
+			action = coinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
+			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_2);
 		}
-		if (code == ResponseCode.TRANSACTION_SUCCESSFUL) {
+		if (action.getResponseCode() == ResponseCode.TRANSACTION_SUCCESSFUL) {
 			currentSwapState = CurrentSwapState.OWNS_COIN_2;
 		}
-		return code;
+		return action;
 	}
 
 	/**
@@ -372,17 +439,19 @@ public class SwapExecutor {
 	 * @param simulate  - if we want to do it for real, or just simulate it
 	 * @return the response code
 	 */
-	public ResponseCode swapCoin2ToCoin1(List<PriceData> priceData, boolean simulate) {
-		ResponseCode code;
+	public TradeAction swapCoin2ToCoin1(List<PriceData> priceData, boolean simulate) {
+		TradeAction action;
 		if (simulate) {
-			code = simulateCoinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
+			action = simulateCoinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
+			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_1);
 		} else {
-			code = coinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
+			action = coinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
+			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_1);
 		}
-		if (code == ResponseCode.TRANSACTION_SUCCESSFUL) {
+		if (action.getResponseCode() == ResponseCode.TRANSACTION_SUCCESSFUL) {
 			currentSwapState = CurrentSwapState.OWNS_COIN_1;
 		}
-		return code;
+		return action;
 	}
 
 	/**
@@ -391,16 +460,16 @@ public class SwapExecutor {
 	 * @param inBaseCoin - the amount should be in the specified base coin
 	 */
 	public void seedMeMoney(double inBaseCoin) {
-		if (swapDescriptor.getCoin1().equalsIgnoreCase(baseCoin)) {
+		if (swapDescriptor.getCoin1().equalsIgnoreCase(swapDescriptor.getBaseCoin())) {
 			this.amountCoin1OwnedFree = inBaseCoin;
 			return;
 		}
-		PriceData priceData = cache.getLastPriceData(swapDescriptor.getCoin1() + baseCoin);
+		PriceData priceData = cache.getLastPriceData(swapDescriptor.getCoin1() + swapDescriptor.getBaseCoin());
 		if (priceData == null) {
 			return;
 		}
 		double lastTickerPrice = priceData.getPrice();
-		this.amountCoin1OwnedFree = correctedAmount(cache.getTicker1(), (inBaseCoin/lastTickerPrice));
+		this.amountCoin1OwnedFree = correctedAmount(cache.getTicker1(), (inBaseCoin/lastTickerPrice), swapDescriptor.getMaxPercentVolume());
 	}
 
 	/**
@@ -415,7 +484,7 @@ public class SwapExecutor {
 		}
 		OwnedAsset ownedAsset1 = CoinUtils.getAssetValue(swapDescriptor.getCoin1(), assets);
 		OwnedAsset ownedAsset2 = CoinUtils.getAssetValue(swapDescriptor.getCoin2(), assets);
-		OwnedAsset ownedAssetBaseAsset = CoinUtils.getAssetValue(getBaseCoin(), assets);
+		OwnedAsset ownedAssetBaseAsset = CoinUtils.getAssetValue(swapDescriptor.getBaseCoin(), assets);
 		OwnedAsset ownedCommisionAsset = CoinUtils.getAssetValue(swapDescriptor.getCommissionCoin(), assets);
 		amountCoin1OwnedFree = CoinUtils.getAmountOwnedValueFree(ownedAsset1);
 		amountCoin2OwnedFree = CoinUtils.getAmountOwnedValueFree(ownedAsset2);
@@ -436,41 +505,12 @@ public class SwapExecutor {
 	private double getCommissionNeeded(Ticker coin, double amountCoin, double defaultTransactionFee,
 									   List<PriceData> priceData) {
 
-		double priceForCoin;
-		if (coin.getTicker().equalsIgnoreCase(getBaseCoin())) {
-			priceForCoin = 1.0;
-		} else {
-			priceForCoin = CoinUtils.getPrice(coin.getTickerBase(), priceData);
-		}
-		double priceForCommissionCoin;
-		if (swapDescriptor.getCommissionCoin().equalsIgnoreCase(getBaseCoin())) {
-			priceForCommissionCoin = 1.0;
-		} else {
-			priceForCommissionCoin = CoinUtils.getPrice(swapDescriptor.getCommissionCoin() + getBaseCoin(), priceData);
-		}
+		double priceForCoin = CoinUtils.getPrice(coin.getTickerBase(), priceData);
+		double priceForCommissionCoin = CoinUtils.getPrice(swapDescriptor.getCommissionCoin() + swapDescriptor.getBaseCoin(), priceData);
 
 		// Commission in base currency
 		double commission = amountCoin * priceForCoin * defaultTransactionFee;
 		return commission / priceForCommissionCoin;
-	}
-
-	/**
-	 * Determine if we have enough commission coin to do a transaction. A trade won't work if you don't have enough of
-	 * the commission coin. Assume a factor of 2 for a buffer
-	 *
-	 * @param coin                  - The coin you want to buy/sell
-	 * @param amountCoin            - the amount of coin you wan to buy or sell
-	 * @param defaultTransactionFee - The default transaction fee
-	 * @param priceData             - the price data to do the conversion from the coin to the commission coin
-	 * @return if we have enough to do the trade
-	 */
-	private boolean haveEnoughForCommission(Ticker coin, double amountCoin, double defaultTransactionFee,
-											List<PriceData> priceData) {
-
-		double commissionCoinNeeded = getCommissionNeeded(coin, amountCoin, defaultTransactionFee, priceData);
-
-		// Create a buffer. Should have 2x the commission fee
-		return (2.0 * commissionCoinNeeded < amountCommissionAssetFree);
 	}
 
 	/**
@@ -651,8 +691,8 @@ public class SwapExecutor {
 			return CurrentSwapState.OWNS_COIN_1;
 		}
 		// If it's less obvious, choose the one with the largest value in base coin
-		PriceData pd1 = cache.getLastPriceData(swapDescriptor.getCoin1() + baseCoin);
-		PriceData pd2 = cache.getLastPriceData(swapDescriptor.getCoin2() + baseCoin);
+		PriceData pd1 = cache.getLastPriceData(swapDescriptor.getCoin1() + swapDescriptor.getBaseCoin());
+		PriceData pd2 = cache.getLastPriceData(swapDescriptor.getCoin2() + swapDescriptor.getBaseCoin());
 		double amt1 = pd1.getPrice() * amountCoin1OwnedFree;
 		double amt2 = pd2.getPrice() * amountCoin2OwnedFree;
 		if (amt1 > amt2) {

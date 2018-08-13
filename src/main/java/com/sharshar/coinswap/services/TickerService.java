@@ -63,9 +63,9 @@ public class TickerService {
 	@Value("${commissionAsset}")
 	private String commissionAsset;
 
-	//@Scheduled(fixedRateString = "${timing.updateTicker}", initialDelayString = "${timing.initialDelay}")
+	@Scheduled(fixedRateString = "${timing.updateTicker}", initialDelayString = "${timing.initialDelay}")
 	public void loadTickers() {
-		load(ScratchConstants.BINANCE);
+		load(ScratchConstants.Exchange.BINANCE);
 	}
 
 	private List<Ticker> getTickerList() {
@@ -77,10 +77,10 @@ public class TickerService {
 		return tickerList;
 	}
 
-	private void load(short exchange) {
+	private void load(ScratchConstants.Exchange exchange) {
 		AccountService accountService = accountServiceFactory.getAccountService(exchange);
 		// Retrieve the list from exchange
-		logger.info("Loading " + ScratchConstants.EXCHANGES[exchange] + " Binance Tickers");
+		logger.info("Loading " + exchange.getExchangeName() + " Binance Tickers");
 		List<Ticker> tickers;
 		try {
 			tickers = accountService.getTickerDefinitions();
@@ -112,13 +112,13 @@ public class TickerService {
 		List<Ticker> retiredTickers = new ArrayList<>();
 
 		// Figure out which ones that need to be retired
-		for (Ticker dbticker : getTickerList()) {
-			Ticker found = getInList(dbticker, tickers);
+		for (Ticker dbTicker : getTickerList()) {
+			Ticker found = getInList(dbTicker, tickers);
 			// We didn't find it in the new list, and it hasn't already been retired, retire it
-			if (found == null && dbticker.getRetired() == null) {
-				retiredTickers.add(dbticker);
-				dbticker.setRetired(now);
-				tickerRepository.save(dbticker);
+			if (found == null && dbTicker.getRetired() == null) {
+				retiredTickers.add(dbTicker);
+				dbTicker.setRetired(now);
+				tickerRepository.save(dbTicker);
 			}
 		}
 		// Notify any changes
@@ -172,12 +172,12 @@ public class TickerService {
 		}
 	}
 
-	@Scheduled(fixedRate = 5000)
+	//@Scheduled(fixedRate = 5000)
 	public void runTimedSimulation() {
 		runRandomSimulation();
 	}
 
-	public void runRandomSimulation() {
+	void runRandomSimulation() {
 		if (tickerList == null) {
 			loadTickers();
 		}
@@ -197,21 +197,20 @@ public class TickerService {
 		Ticker ticker2 = itemsToUse.get(selectItem2);
 		SwapDescriptor sd = new SwapDescriptor().setCoin1(ticker1.getTicker()).setCoin2(ticker2.getTicker())
 				.setActive(false).setCommissionCoin(commissionAsset).setDesiredStdDev(desiredStdDev)
-				.setExchange(ScratchConstants.BINANCE);
-		runSimulation(sd, defaultBaseCurrency, ONE_DAY);
+				.setBaseCoin("BTC").setSimulate(true).setMaxPercentVolume(0.1)
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue());
+		runSimulation(sd, ONE_DAY);
 	}
 
-	private void runSimulation(SwapDescriptor swapDescriptor, String baseCoin, long checkUpInterval) {
+	private void runSimulation(SwapDescriptor swapDescriptor, long checkUpInterval) {
 		logger.info("Running Simulation: " + swapDescriptor.getCoin1() + "/" + swapDescriptor.getCoin2()
 				+ " - " + String.format("%.4f", swapDescriptor.getDesiredStdDev()));
 		double seedMoney = 1.0;
 		long startTime = System.currentTimeMillis();
-		SimulatorRecord record = historicalAnalysisService.simulateHistoricalAnalysis(swapDescriptor.getCoin1(),
-				swapDescriptor.getCoin2(), baseCoin, swapDescriptor.getExchange(), swapDescriptor.getCommissionCoin(),
-				checkUpInterval, swapDescriptor.getDesiredStdDev(), seedMoney);
+		SimulatorRecord record = historicalAnalysisService.simulateHistoricalAnalysis(swapDescriptor, checkUpInterval, seedMoney);
 		long endTime = System.currentTimeMillis();
 		List<SnapshotDescriptor> snapshots = record.getSnapshotDescriptorList();
-		SimulationRun run = new SimulationRun().setBaseCoin(baseCoin).setCoin1(swapDescriptor.getCoin1())
+		SimulationRun run = new SimulationRun().setBaseCoin(swapDescriptor.getBaseCoin()).setCoin1(swapDescriptor.getCoin1())
 				.setCoin2(swapDescriptor.getCoin2()).setCommissionCoin(swapDescriptor.getCommissionCoin())
 				.setStartDate(snapshots.get(0).getSnapshotDate())
 				.setEndDate(snapshots.get(snapshots.size() - 1).getSnapshotDate())
@@ -225,8 +224,8 @@ public class TickerService {
 		try {
 			run = simulationRunRepository.save(run);
 		} catch (Exception ex) {
-			System.out.println("stddev: " + run.getStdDev() + ", end amount: " + run.getEndAmount() +
-					", mean change: " + run.getMeanChange() + ", stddevchange: " + run.getStdDevChange());
+			logger.error("Standard Deviation: " + run.getStdDev() + ", end amount: " + run.getEndAmount() +
+					", mean change: " + run.getMeanChange() + ", Standard Deviation Change: " + run.getStdDevChange(), ex);
 			return;
 		}
 		long runId = run.getId();

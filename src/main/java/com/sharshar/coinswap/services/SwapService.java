@@ -1,13 +1,10 @@
 package com.sharshar.coinswap.services;
 
-import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.components.SwapExecutor;
-import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.repositories.SwapRepository;
 import com.sharshar.coinswap.repositories.TickerRepository;
 import com.sharshar.coinswap.utils.AccountServiceFactory;
-import com.sharshar.coinswap.utils.CoinUtils;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,7 +26,22 @@ import java.util.stream.Collectors;
  */
 @Service
 public class SwapService {
-	Logger logger = LogManager.getLogger();
+	private Logger logger = LogManager.getLogger();
+
+	public boolean shutdown() {
+		try {
+			Iterable<SwapDescriptor> dbSwaps = swapRepository.findAll();
+			for (SwapDescriptor swap : dbSwaps) {
+				swap.setActive(false);
+			}
+			swapRepository.saveAll(dbSwaps);
+			return true;
+		} catch (Exception ex) {
+			logger.error("Unable to shutdown swaps", ex);
+			return false;
+		}
+	}
+
 	/**
 	 * An object that contains all the information about a swap in one place
 	 */
@@ -103,19 +115,17 @@ public class SwapService {
 	 * @return the object that knows how to execute the swap
 	 */
 	public Swap createComponent(SwapDescriptor swapDescriptor) {
-		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), !swapDescriptor.isActive())) {
+		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), swapDescriptor.isActive())) {
 			return null;
 		}
 		SwapExecutor component = applicationContext.getBean(SwapExecutor.class, swapDescriptor,
-				accountServiceFactory.getAccountService(swapDescriptor.getExchange()),
-				deriveBaseCoin(accountServiceFactory.getAccountService(swapDescriptor.getExchange()),
-						swapDescriptor.getCoin1(), swapDescriptor.getCoin2()));
+				accountServiceFactory.getAccountService(swapDescriptor.getExchange()));
 		Swap swap = new Swap();
 		swap.setSwapDescriptor(swapDescriptor);
 		swap.setSwapExecutor(component);
-		component.setCache(cacheService.createCache(swapDescriptor, component.getBaseCoin(), tickerRepository.findAll()));
+		component.setCache(cacheService.createCache(swapDescriptor, tickerRepository.findAll()));
 		component.backFillData();
-		if (!swapDescriptor.isActive()) {
+		if (swapDescriptor.isActive()) {
 			component.seedMeMoney(1.0);
 		}
 		return swap;
@@ -144,6 +154,13 @@ public class SwapService {
 		return swapDescriptor;
 	}
 
+	/**
+	 * Update the values of the swap object
+	 *
+	 * @param id - The id to update
+	 * @param values - The new values
+	 * @return - the saved value
+	 */
 	public SwapDescriptor updateSwap(long id, SwapDescriptor values) {
 		SwapDescriptor swapDescriptor = swapRepository.findById(id).orElse(null);
 		if (swapDescriptor != null) {
@@ -153,50 +170,23 @@ public class SwapService {
 		return swapDescriptor;
 	}
 
+	/**
+	 * Create a new component. If it already exists, return the old one
+	 *
+	 * @param swapDescriptor - A description of the swap
+	 * @return the swap descriptor
+	 */
 	public SwapDescriptor addComponement(SwapDescriptor swapDescriptor) {
 		Swap match = getMatch(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2());
 		if (match != null) {
 			return match.getSwapDescriptor();
 		}
-		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), !swapDescriptor.isActive())) {
+		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), swapDescriptor.isActive())) {
 			return null;
 		}
 		Swap component = createComponent(swapDescriptor);
 		swaps.add(component);
 		return swapRepository.save(swapDescriptor);
-	}
-
-	/**
-	 * If we don't have a base coin defined, see if you can find one in which the two coins have one in common.
-	 * Bitcoin is probably the safest, but in theory, it could find others.
-	 *
-	 * @return the best base coin to use
-	 */
-	private String deriveBaseCoin(AccountService accountService, String coin1, String coin2) {
-		List<PriceData> priceData = new ArrayList<>();
-		try {
-			priceData = accountService.getAllPrices();
-		} catch (Exception ex) {
-			logger.error("Unable to derive base coin, just using Bitcoin");
-			return "BTC";
-		}
-		if (CoinUtils.hasPriceData(coin1 + defaultBaseCurrency, priceData) &&
-			CoinUtils.hasPriceData(coin2 + defaultBaseCurrency, priceData)) {
-			return defaultBaseCurrency;
-		}
-		for (String baseCurrency : baseCurrencies) {
-			if (baseCurrency.equalsIgnoreCase(coin1)) {
-				return baseCurrency;
-			}
-			if (baseCurrency.equalsIgnoreCase(coin2)) {
-				return baseCurrency;
-			}
-			if (CoinUtils.hasPriceData(coin1 + baseCurrency, priceData) &&
-					CoinUtils.hasPriceData(coin2 + baseCurrency, priceData)) {
-				return baseCurrency;
-			}
-		}
-		return null;
 	}
 
 	public List<Swap> getSwaps() {
@@ -210,7 +200,7 @@ public class SwapService {
 	 * @param coin1 - the first coin
 	 * @param coin2 - the second coin
 	 */
-	public void removeSwapComponent(short exchange, String coin1, String coin2) {
+	public void removeSwapComponent(ScratchConstants.Exchange exchange, String coin1, String coin2) {
 		// Recursively find and remove each match from the list
 		Swap match = getMatch(exchange, coin1, coin1);
 		while (match != null) {
@@ -219,7 +209,7 @@ public class SwapService {
 		}
 
 		// Remove it from the database if it exists
-		List<SwapDescriptor> swapDescriptors = swapRepository.findByCoin1AndCoin2AndExchange(coin2, coin2, exchange);
+		List<SwapDescriptor> swapDescriptors = swapRepository.findByCoin1AndCoin2AndExchange(coin2, coin2, exchange.getValue());
 		if (swapDescriptors != null && !swapDescriptors.isEmpty()) {
 			swapRepository.deleteAll(swapDescriptors);
 		}
@@ -233,7 +223,7 @@ public class SwapService {
 	 * @param coin2    - the second coin
 	 * @return any matches from the defined swaps
 	 */
-	private Swap getMatch(short exchange, String coin1, String coin2) {
+	private Swap getMatch(ScratchConstants.Exchange exchange, String coin1, String coin2) {
 		List<Swap> swapList = getSwaps();
 
 		return swapList.stream()
@@ -256,15 +246,15 @@ public class SwapService {
 	 * @param coin2    - the second coin
 	 * @return if it is a valid addition
 	 */
-	private boolean validAddition(short exchange, String coin1, String coin2, boolean simulate) {
+	private boolean validAddition(ScratchConstants.Exchange exchange, String coin1, String coin2, boolean active) {
+		if (!active) {
+			return false;
+		}
 		// We don't want to add anything that could conflict with another swap
 		if (coin1 == null || coin2 == null || coin1.isEmpty() || coin2.isEmpty()) {
 			return false;
 		}
 		if (coin1.equalsIgnoreCase(coin2)) {
-			return false;
-		}
-		if (exchange <= 0 || exchange > ScratchConstants.EXCHANGES.length) {
 			return false;
 		}
 		// find any matches that share the same coin(s)
@@ -276,7 +266,7 @@ public class SwapService {
 				.collect(Collectors.toList());
 
 		// If there is no overlap, we're valid
-		if (similarOnes == null || similarOnes.isEmpty() || simulate) {
+		if (similarOnes == null || similarOnes.isEmpty()) {
 			return true;
 		}
 

@@ -1,5 +1,8 @@
 package com.sharshar.coinswap.beans.simulation;
 
+import com.sharshar.coinswap.components.SwapExecutor;
+
+import java.text.SimpleDateFormat;
 import java.util.Date;
 
 /**
@@ -12,6 +15,7 @@ public class TradeAction {
 	private SimulatorRecord.TradeDirection direction;
 	private double amountCoin1;
 	private double amountCoin2;
+	private SwapExecutor.ResponseCode responseCode;
 
 	public Date getTradeDate() {
 		return tradeDate;
@@ -49,11 +53,25 @@ public class TradeAction {
 		return this;
 	}
 
+	public SwapExecutor.ResponseCode getResponseCode() {
+		return responseCode;
+	}
+
+	public TradeAction setResponseCode(SwapExecutor.ResponseCode responseCode) {
+		this.responseCode = responseCode;
+		return this;
+	}
+
 	@Override
 	public String toString() {
+		SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm");
+		String dateVal = tradeDate.toString();
+		try {
+			dateVal = sdf.format(tradeDate);
+		} catch (Exception ex) {}
 		StringBuilder s = new StringBuilder();
-		s.append("Trade: ").append(tradeDate).append(": C1 ").append(String.format("%.6f", amountCoin1))
-				.append(", C2 ").append(String.format("%.6f", amountCoin2))
+		s.append("Trade: ").append(dateVal).append(": C1 - ").append(String.format("%.4f", amountCoin1))
+				.append(", C2 - ").append(String.format("%.4f", amountCoin2))
 				.append(", ").append(direction);
 		return s.toString();
 	}

@@ -1,5 +1,7 @@
 package com.sharshar.coinswap.utils;
 
+import java.util.stream.Stream;
+
 /**
  * Reused constants for the application that don't need to be in a configuration file
  *
@@ -8,12 +10,29 @@ package com.sharshar.coinswap.utils;
 public class ScratchConstants {
 	private ScratchConstants() {  /* No need to instantiate this */}
 
-	public static final short BINANCE = 1;
-	public static final short CRYPTO_COMPARE = 2;
-	public static final String[] EXCHANGES = {"", "Binance", "Crypto Compare"};
-	public static final short ELASTIC_SEARCH = 1;
-	public static final short SQL_SEARCH = 2;
-	public static final int[] EXCHANGES_SEARCHES = {0, 1, 2};
+	public enum Exchange {
+		BINANCE((short) 1, "Binance"), CRYPTO_COMPARE((short) 2, "Crypto Compare");
+
+		private short value = 0;
+		private String exchangeName;
+
+		public String getExchangeName() {
+			return this.exchangeName;
+		}
+
+		public short getValue() {
+			return value;
+		}
+
+		public static Exchange valueOf(int value) {
+			return Stream.of(Exchange.values()).filter(c -> c.getValue() == value).findFirst().orElse(null);
+		}
+
+		Exchange(short value, String exchangeName) {
+			this.value = value;
+			this.exchangeName = exchangeName;
+		}
+	}
 
 	// The maximum amount of time this api can be down
 	// before the data is stale is 30 second

@@ -7,6 +7,8 @@ import javax.persistence.Id;
 import java.util.Date;
 
 /**
+ * Describe a snapshot event in a simulation
+ *
  * Created by lsharshar on 8/2/2018.
  */
 @Entity

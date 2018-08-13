@@ -82,9 +82,7 @@ public class SimulatorRecord {
 		return tradeActionList;
 	}
 
-	public void addTradeAction(Date tradeDate, TradeDirection direction, double amountCoin1, double amountCoin2) {
-		TradeAction ta = new TradeAction().setTradeDate(tradeDate).setDirection(direction).setAmountCoin1(amountCoin1)
-				.setAmountCoin2(amountCoin2);
+	public void addTradeAction(TradeAction ta) {
 		getTradeActionList().add(ta);
 	}
 

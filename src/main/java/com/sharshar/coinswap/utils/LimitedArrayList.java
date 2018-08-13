@@ -16,7 +16,7 @@ public class LimitedArrayList<T> extends ArrayList<T> {
 
 	/**
 	 * If we have more than limit number of items, remove the first and then add the new item.
-	 * We want the old items to "fall" off the list
+	 * We want the old items to "fall" off the list. Not sure what addAll will do, so stick to this for now
 	 *
 	 * @param item - The item to add
 	 */

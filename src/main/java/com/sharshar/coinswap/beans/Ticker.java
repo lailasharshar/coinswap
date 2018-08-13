@@ -1,9 +1,8 @@
 package com.sharshar.coinswap.beans;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.sharshar.coinswap.utils.ScratchConstants;
 
 import javax.persistence.*;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -21,7 +20,7 @@ public class Ticker {
 	long tableId;
 	private String ticker;
 	private String base;
-	private short exchange;
+	private ScratchConstants.Exchange exchange;
 	private Date foundDate;
 	private Date retired;
 	private Date updatedDate;
@@ -42,7 +41,7 @@ public class Ticker {
 		return this;
 	}
 
-	public Ticker(String tickerAndBase, short exchange, List<String> baseCurrencies) {
+	public Ticker(String tickerAndBase, ScratchConstants.Exchange exchange, List<String> baseCurrencies) {
 		this.exchange = exchange;
 		if (baseCurrencies == null || tickerAndBase == null || tickerAndBase.isEmpty()) {
 			return;
@@ -97,11 +96,11 @@ public class Ticker {
 		return this;
 	}
 
-	public short getExchange() {
+	public ScratchConstants.Exchange getExchange() {
 		return exchange;
 	}
 
-	public Ticker setExchange(short exchange) {
+	public Ticker setExchange(ScratchConstants.Exchange exchange) {
 		this.exchange = exchange;
 		return this;
 	}
@@ -168,5 +167,21 @@ public class Ticker {
 	public Ticker setStepSize(Double stepSize) {
 		this.stepSize = stepSize;
 		return this;
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("ID: ").append(tableId)
+				.append(retired != null ? " (Retired) " : "")
+				.append(" - ")
+				.append(ticker).append("/").append(base).append(" on ")
+				.append(exchange.getExchangeName()).append(" found ").append(foundDate)
+				.append(" updated ").append(updatedDate)
+				.append(" min: ").append(String.format("%.6f", minQty))
+				.append(" max: ").append(String.format("%.6f", maxQty))
+				.append(" step: ").append(String.format("%.6f", stepSize))
+				.append(" last volume: ").append(String.format("%.2f", lastVolume));
+		return sb.toString();
 	}
 }

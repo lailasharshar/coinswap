@@ -3,11 +3,13 @@ package com.sharshar.coinswap.services;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.components.ExchangeCache;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.exchanges.Data;
 import com.sharshar.coinswap.exchanges.HistoricalDataPull;
 import com.sharshar.coinswap.utils.ScratchConstants;
+import org.apache.commons.lang3.SerializationUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,36 +39,32 @@ public class HistoricalAnalysisService {
 	/**
 	 * Load the price data, clean up and reformat the list and simulate the swap
 	 *
-	 * @param coin1 - coin1 to use
-	 * @param coin2 - coin2 to use
-	 * @param baseCoin - base coin to use
-	 * @param exchange - exchange to use
-	 * @param commissionCoin - the commission coin to use
+	 * @param descriptor - coin1/coin2/base coin/exchange/commission coin to use
 	 * @param checkUpInterval - how often to do a snapshot
-	 * @param desiredStdDev - the standard deviation to use to determine swap times
 	 * @param seedMoney - the initial seed money to use in base coin
 	 * @return the simulation results summary
 	 */
-	public SimulatorRecord simulateHistoricalAnalysis(String coin1, String coin2, String baseCoin, short exchange,
-							   String commissionCoin, long checkUpInterval, double desiredStdDev,
+	public SimulatorRecord simulateHistoricalAnalysis(SwapDescriptor descriptor, long checkUpInterval,
 							  double seedMoney) {
-		if (coin1 == null || coin2 == null || baseCoin == null || coin1.isEmpty() || coin2.isEmpty() || baseCoin.isEmpty()) {
-			logger.error ("Can't compare " + coin1 + " against " + coin2);
+		if (descriptor.getCoin1() == null || descriptor.getCoin2() == null ||
+				descriptor.getBaseCoin() == null || descriptor.getCoin1().isEmpty() ||
+				descriptor.getCoin2().isEmpty() || descriptor.getBaseCoin().isEmpty()) {
+			logger.error ("Can't compare " + descriptor.getCoin1() + " against " + descriptor.getCoin2());
 			return null;
 		}
 
-		if (coin1.equalsIgnoreCase(coin2)) {
+		if (descriptor.getCoin1().equalsIgnoreCase(descriptor.getCoin2())) {
 			// Can't compare against itself
-			logger.error ("Can't compare " + coin1 + " against " + coin2);
+			logger.error ("Can't compare " + descriptor.getCoin1() + " against " + descriptor.getCoin2());
 			return null;
 		}
-		List<List<PriceData>> priceData = loadPriceData(coin1, coin2, baseCoin, commissionCoin, 0, exchange);
+		List<List<PriceData>> priceData = loadPriceData(descriptor.getCoin1(), descriptor.getCoin2(),
+				descriptor.getBaseCoin(), descriptor.getCommissionCoin(), 0, descriptor.getExchange());
 		List<List<PriceData>> cleanedUpList = cleanUpData(priceData);
 		List<List<PriceData>> distributedData = distributeDataByDate(cleanedUpList);
-		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(false)
-				.setExchange(exchange).setCoin1(coin1).setCoin2(coin2)
-				.setCommissionCoin(commissionCoin).setDesiredStdDev(desiredStdDev);
-		return simulateOverTime(swapDescriptor, distributedData, checkUpInterval, desiredStdDev, seedMoney);
+		SwapDescriptor swapDescriptor = SerializationUtils.clone(descriptor);
+		swapDescriptor.setSimulate(true);
+		return simulateOverTime(swapDescriptor, distributedData, checkUpInterval, seedMoney);
 	}
 
 	/**
@@ -75,13 +73,17 @@ public class HistoricalAnalysisService {
 	 * @param sd - the description of the swap elements
 	 * @param priceOverTime - the price data for the three coins over time increments
 	 * @param checkInterval - how often to take a snapshot (so we can analyze consistency of trends)
-	 * @param desStdDev - the standard deviation to use to swap
 	 * @param seedMoney - seed money in the base currency to start with
 	 * @return a summary of the simulation
 	 */
 	private SimulatorRecord simulateOverTime(SwapDescriptor sd, List<List<PriceData>> priceOverTime, long checkInterval,
-											 double desStdDev, double seedMoney) {
+											 double seedMoney) {
+		SimulatorRecord record = new SimulatorRecord();
 		SwapService.Swap swap = swapService.createComponent(sd);
+		if (swap == null) {
+			logger.error("Invalid swap descriptor: " + sd.toString());
+			return record;
+		}
 		SwapExecutor executor = swap.getSwapExecutor();
 
 		// Clear out back filled data since when we create something, by default, it's filled with historic data
@@ -89,10 +91,9 @@ public class HistoricalAnalysisService {
 		executor.getCache().clear();
 
 
-		SimulatorRecord record = new SimulatorRecord();
 		record.setDescriptor(sd);
 		record.setInitialBaseInvestment(seedMoney);
-		record.setDesiredStdDev(desStdDev);
+		record.setDesiredStdDev(sd.getDesiredStdDev());
 		long intervalExpire = 0;
 
 		boolean init = true;
@@ -113,15 +114,13 @@ public class HistoricalAnalysisService {
 			}
 			if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_1 &&
 					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
-				record.addTradeAction(pdList.get(0).getUpdateTime(), SimulatorRecord.TradeDirection.BUY_COIN_2,
-						executor.getAmountCoin1OwnedFree(), executor.getAmountCoin2OwnedFree());
-				swap.getSwapExecutor().swapCoin1ToCoin2(pdList, !swap.getSwapDescriptor().isActive());
+				TradeAction action = swap.getSwapExecutor().swapCoin1ToCoin2(pdList, swap.getSwapDescriptor().isSimulate());
+				record.addTradeAction(action);
 			} else {
 				if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
 						position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
-					record.addTradeAction(pdList.get(0).getUpdateTime(), SimulatorRecord.TradeDirection.BUY_COIN_1,
-							executor.getAmountCoin1OwnedFree(), executor.getAmountCoin2OwnedFree());
-					swap.getSwapExecutor().swapCoin2ToCoin1(pdList, !swap.getSwapDescriptor().isActive());
+					TradeAction action = swap.getSwapExecutor().swapCoin2ToCoin1(pdList, swap.getSwapDescriptor().isSimulate());
+					record.addTradeAction(action);
 				}
 			}
 			if (pdList.get(0).getUpdateTime().getTime() >= intervalExpire) {
@@ -192,6 +191,10 @@ public class HistoricalAnalysisService {
 		clipEndings(coin2List, coin1List);
 
 		// If the don't match dates, give up
+		if (coin2List.isEmpty() || coin1List.isEmpty()) {
+			coin1List.clear();
+			coin2List.clear();
+		}
 		if (coin1List.get(coin1List.size() - 1).getUpdateTime().getTime() !=
 				coin2List.get(coin2List.size() - 1).getUpdateTime().getTime()) {
 			rawData.get(0).clear();
@@ -242,7 +245,7 @@ public class HistoricalAnalysisService {
 	 * @return a list of three lists, each with the price data of each coin
 	 */
 	private List<List<PriceData>> loadPriceData(String coin1, String coin2, String baseCoin,
-												String commissionCoin, int numPulled, short exchange) {
+												String commissionCoin, int numPulled, ScratchConstants.Exchange exchange) {
 		List<List<PriceData>> pd = new ArrayList<>();
 		List<Data> coin1HistoryData;
 		List<Data> commissionHistoryData;
@@ -292,7 +295,7 @@ public class HistoricalAnalysisService {
 	 * @param baseCoin - the base coin
 	 * @return a list of price data that always has a price of 1
 	 */
-	private List<PriceData> generateEmptyList(List<Data> historicalData, short exchange, String baseCoin) {
+	private List<PriceData> generateEmptyList(List<Data> historicalData, ScratchConstants.Exchange exchange, String baseCoin) {
 		return historicalData.stream().map(c ->
 				new PriceData().setExchange(exchange).setPrice(1.0)
 						.setTicker(baseCoin + baseCoin).setUpdateTime(c.getTime()))
@@ -310,7 +313,7 @@ public class HistoricalAnalysisService {
 	 */
 	private List<PriceData> convertToPriceData(List<Data> data, String coin, String baseCoin) {
 		return data.stream().map(c ->
-				new PriceData().setExchange(ScratchConstants.BINANCE).
+				new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).
 						setPrice(c.getOpen()).setTicker(coin + baseCoin).setUpdateTime(c.getTime()))
 				.collect(Collectors.toList());
 	}

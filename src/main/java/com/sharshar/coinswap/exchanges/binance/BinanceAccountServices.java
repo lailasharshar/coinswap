@@ -1,7 +1,6 @@
 package com.sharshar.coinswap.exchanges.binance;
 
 import com.binance.api.client.BinanceApiRestClient;
-import com.binance.api.client.constant.BinanceApiConstants;
 import com.binance.api.client.domain.OrderSide;
 import com.binance.api.client.domain.OrderStatus;
 import com.binance.api.client.domain.OrderType;
@@ -72,8 +71,8 @@ public class BinanceAccountServices implements AccountService {
 		return trades.stream().filter(c -> orderId.equalsIgnoreCase(c.getOrderId())).collect(Collectors.toList());
 	}
 
-	public short getExchange() {
-		return ScratchConstants.BINANCE;
+	public ScratchConstants.Exchange getExchange() {
+		return ScratchConstants.Exchange.BINANCE;
 	}
 
 	public List<Ticker> getTickerDefinitions() {
@@ -86,7 +85,7 @@ public class BinanceAccountServices implements AccountService {
 				continue;
 			}
 			Ticker ticker = new Ticker().setTicker(si.getBaseAsset()).setBase(si.getQuoteAsset())
-					.setExchange(ScratchConstants.BINANCE);
+					.setExchange(ScratchConstants.Exchange.BINANCE);
 			SymbolFilter lotFilter = si.getSymbolFilter(FilterType.LOT_SIZE);
 			ticker.setMinQty(Double.parseDouble(lotFilter.getMinQty()));
 			ticker.setMaxQty(Double.parseDouble(lotFilter.getMaxQty()));
@@ -111,7 +110,7 @@ public class BinanceAccountServices implements AccountService {
 			}
 			Date now = new Date();
 			for (TickerPrice tp : allPrices) {
-				PriceData pd = new PriceData().setTicker(tp.getSymbol()).setExchange(ScratchConstants.BINANCE).setUpdateTime(now);
+				PriceData pd = new PriceData().setTicker(tp.getSymbol()).setExchange(getExchange()).setUpdateTime(now);
 				try {
 					double price = Double.parseDouble(tp.getPrice());
 					pd.setPrice(price);
@@ -235,7 +234,7 @@ public class BinanceAccountServices implements AccountService {
 			return pdList;
 		}
 		return historicalDataPullData.stream().map(c ->
-				new PriceData().setExchange(ScratchConstants.BINANCE).setPrice(c.getOpen()).setTicker(coin + baseCoin).setUpdateTime(c.getTime()))
+				new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(c.getOpen()).setTicker(coin + baseCoin).setUpdateTime(c.getTime()))
 				.collect(Collectors.toList());
 	}
 }

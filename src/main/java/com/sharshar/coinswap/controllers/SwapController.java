@@ -1,8 +1,8 @@
 package com.sharshar.coinswap.controllers;
 
 import com.sharshar.coinswap.beans.SwapDescriptor;
-import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.services.SwapService;
+import com.sharshar.coinswap.utils.ScratchConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class SwapController {
 
 	@Autowired
-	SwapService swapService;
+	private SwapService swapService;
 
 	@PostMapping("/swaps")
 	public SwapDescriptor addSwapComponent(@RequestBody SwapDescriptor swap) {
@@ -29,7 +29,7 @@ public class SwapController {
 	@DeleteMapping("/swaps")
 	public List<SwapDescriptor> removeSwapComponent(@RequestParam String coin1, @RequestParam String coin2,
 													@RequestParam short exchange) {
-		swapService.removeSwapComponent(exchange, coin1, coin2);
+		swapService.removeSwapComponent(ScratchConstants.Exchange.valueOf(exchange), coin1, coin2);
 		return getComponents();
 	}
 
@@ -52,6 +52,15 @@ public class SwapController {
 		if (swapExecutors == null) {
 			return new ArrayList<>();
 		}
-		return swapExecutors.stream().map(c -> c.getSwapDescriptor()).collect(Collectors.toList());
+		return swapExecutors.stream().map(SwapService.Swap::getSwapDescriptor).collect(Collectors.toList());
+	}
+
+	@GetMapping("/shutdown")
+	private String shutdown() {
+		if (swapService.shutdown()) {
+			return "Shutdown";
+		} else {
+			return "Error";
+		}
 	}
 }

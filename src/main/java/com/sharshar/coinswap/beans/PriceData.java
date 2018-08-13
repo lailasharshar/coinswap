@@ -1,7 +1,6 @@
 package com.sharshar.coinswap.beans;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import com.sharshar.coinswap.utils.ScratchConstants;
 
 import java.util.Date;
 
@@ -12,18 +11,10 @@ import java.util.Date;
  */
 public class PriceData {
 
-	private Logger logger = LogManager.getLogger();
-
 	private String ticker;
-
 	private Double price;
-
 	private Date updateTime;
-
-	private short exchange;
-
-	public PriceData() {
-	}
+	private ScratchConstants.Exchange exchange;
 
 	public Double getPrice() {
 		return price;
@@ -52,12 +43,17 @@ public class PriceData {
 		return this;
 	}
 
-	public short getExchange() {
+	public ScratchConstants.Exchange getExchange() {
 		return exchange;
 	}
 
-	public PriceData setExchange(short exchange) {
+	public PriceData setExchange(ScratchConstants.Exchange exchange) {
 		this.exchange = exchange;
 		return this;
+	}
+
+	@Override
+	public String toString() {
+		return ticker + " = " + price + " on " + exchange.getExchangeName() + " (" + updateTime + ")";
 	}
 }

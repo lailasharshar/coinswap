@@ -11,6 +11,14 @@ import java.util.List;
  * Created by lsharshar on 7/20/2018.
  */
 public class CoinUtils {
+	private CoinUtils() {}
+	/**
+	 * Retrieve the specific asset you are looking for, for example, BNB, XMR, BTC
+	 *
+	 * @param coin - the asset to look for
+	 * @param ownedAssets - all owned assets
+	 * @return the specific asset we are looking for, or null if you don't own any
+	 */
 	public static OwnedAsset getAssetValue(String coin, List<OwnedAsset> ownedAssets) {
 		OwnedAsset coinAsset = ownedAssets.stream()
 				.filter(c -> c.getAsset().equalsIgnoreCase(coin)).findFirst().orElse(null);
@@ -20,6 +28,11 @@ public class CoinUtils {
 		return coinAsset;
 	}
 
+	/**
+	 * Get the amount of free coins you own of a particular asset, or 0 if you don't own any
+	 * @param ownedAsset - the asset in question
+	 * @return the amoun you own of it
+	 */
 	public static double getAmountOwnedValueFree(OwnedAsset ownedAsset) {
 		if (ownedAsset == null) {
 			return 0;
@@ -27,28 +40,30 @@ public class CoinUtils {
 		return ownedAsset.getFree();
 	}
 
+	/**
+	 * Given a list of price data, find a specific ticker (coin + base coin) you are searching for
+	 *
+	 * @param ticker - the ticker
+	 * @param priceData - the list of price data
+	 * @return - the price data object you are looking for, or null if it's not there
+	 */
 	public static PriceData getPriceData(String ticker, List<PriceData> priceData) {
 		return priceData.stream()
 				.filter(c -> c.getTicker().equalsIgnoreCase(ticker))
 				.findFirst().orElse(null);
 	}
 
+	/**
+	 * Don't just look for the price data object, but return it's actual price in that price data list
+	 * @param ticker - the ticker you are looking for
+	 * @param priceData - the list of price data
+	 * @return the price of the ticker
+	 */
 	public static double getPrice(String ticker, List<PriceData> priceData) {
 		PriceData pd = getPriceData(ticker, priceData);
 		if (pd == null) {
 			return 0.0;
 		}
 		return pd.getPrice();
-	}
-
-	/**
-	 * Returns whether a ticker is in the list of price data
-	 *
-	 * @param ticker - the ticker symbol (coin + basecoin, i.e., XMRBTC
-	 * @param pd - the list of price data
-	 * @return if price data exists
-	 */
-	public static boolean hasPriceData(String ticker, List<PriceData> pd) {
-		return getPriceData(ticker, pd) != null;
 	}
 }

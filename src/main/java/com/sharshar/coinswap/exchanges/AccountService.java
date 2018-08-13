@@ -6,6 +6,7 @@ import com.binance.api.client.domain.account.Trade;
 import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.Ticker;
+import com.sharshar.coinswap.utils.ScratchConstants;
 
 import java.util.List;
 
@@ -13,7 +14,7 @@ import java.util.List;
  * Created by lsharshar on 7/18/2018.
  */
 public interface AccountService {
-	short getExchange();
+	ScratchConstants.Exchange getExchange();
 	List<PriceData> getAllPrices();
 	List<OwnedAsset> getAllBalances();
 	List<OwnedAsset> getBalancesWithValues();

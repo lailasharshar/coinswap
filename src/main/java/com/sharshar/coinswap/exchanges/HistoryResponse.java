@@ -5,18 +5,22 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
 /**
+ * Holds the response of an historical data pull
+ *
  * Created by lsharshar on 5/11/2018.
  */
 @JsonIgnoreProperties
 public class HistoryResponse {
-	String response;
-	Integer type;
-	Boolean aggregated;
-	List<Data> data;
-	Long timeTo;
-	Long timeFrom;
-	Boolean FirstValueInArray;
-	ConversionType conversionType;
+	private String response;
+	private Integer type;
+	private Boolean aggregated;
+	private List<Data> data;
+	private Long timeTo;
+	private Long timeFrom;
+	private Boolean firstValueInArray;
+	private ConversionType conversionType;
+	private String message;
+	private String yourCalls;
 
 	public String getResponse() {
 		return response;
@@ -67,11 +71,11 @@ public class HistoryResponse {
 	}
 
 	public Boolean getFirstValueInArray() {
-		return FirstValueInArray;
+		return firstValueInArray;
 	}
 
 	public void setFirstValueInArray(Boolean firstValueInArray) {
-		FirstValueInArray = firstValueInArray;
+		this.firstValueInArray = firstValueInArray;
 	}
 
 	public ConversionType getConversionType() {
@@ -80,5 +84,23 @@ public class HistoryResponse {
 
 	public void setConversionType(ConversionType conversionType) {
 		this.conversionType = conversionType;
+	}
+
+	public String getMessage() {
+		return message;
+	}
+
+	public HistoryResponse setMessage(String message) {
+		this.message = message;
+		return this;
+	}
+
+	public String getYourCalls() {
+		return yourCalls;
+	}
+
+	public HistoryResponse setYourCalls(String yourCalls) {
+		this.yourCalls = yourCalls;
+		return this;
 	}
 }

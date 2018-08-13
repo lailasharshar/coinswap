@@ -13,8 +13,8 @@ public class AccountServiceFactory {
 	@Autowired
 	private BinanceAccountServices binanceAccountServices;
 
-	public AccountService getAccountService(short id) {
-		if (id == ScratchConstants.BINANCE) {
+	public AccountService getAccountService(ScratchConstants.Exchange exchange) {
+		if (exchange == ScratchConstants.Exchange.BINANCE) {
 			return binanceAccountServices;
 		}
 		return null;

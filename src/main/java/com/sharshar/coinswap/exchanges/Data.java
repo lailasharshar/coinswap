@@ -5,17 +5,19 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.Date;
 
 /**
+ * Holds that data queried from historical data
+ *
  * Created by lsharshar on 5/11/2018.
  */
 @JsonIgnoreProperties
 public class Data {
-	long time;
-	double high;
-	double low;
-	double open;
-	double volumefrom;
-	double volumeto;
-	double close;
+	private long time;
+	private double high;
+	private double low;
+	private double open;
+	private double volumefrom;
+	private double volumeto;
+	private double close;
 
 	public Date getTime() {
 		return new Date(time * 1000);

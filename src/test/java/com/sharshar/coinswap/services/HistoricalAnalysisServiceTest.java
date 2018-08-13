@@ -1,8 +1,10 @@
 package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.TestCoinswapApplication;
+import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
 import com.sharshar.coinswap.beans.simulation.SnapshotDescriptor;
+import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -26,18 +28,54 @@ public class HistoricalAnalysisServiceTest {
 	@Autowired
 	private TickerService tickerService;
 
-	@Test
-	public void simulateHistoricalAnalysis() throws Exception {
-		SimulatorRecord record = historical.simulateHistoricalAnalysis("BCD", "CHAT", "BTC", ScratchConstants.BINANCE,
-				"BNB", 86400000L /* 1 day */, 1.0, 1.0);
-		List<SnapshotDescriptor> snapshots = record.getSnapshotDescriptorList();
-		//System.out.println(snapshots.get(0).getAmountCoin1()/snapshots.get(0).getAmountCoin2());
-		//System.out.println(snapshots.get(snapshots.size() - 1).getAmountCoin1()/snapshots.get(snapshots.size() - 1).getAmountCoin2());
-	}
+	@Autowired
+	private MonitorService monitorService;
+
+	@Autowired
+	NotificationService notificationService;
 
 	@Test
+	public void simulateHistoricalAnalysis() throws Exception {
+		SwapDescriptor swap = new SwapDescriptor().setCoin1("TUSD").setCoin2("BCD").setBaseCoin("BTC")
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue()).setCommissionCoin("BNB").setActive(true).setSimulate(true);
+		double stdDev = 0.02;
+		while (stdDev < 0.10) {
+			swap.setDesiredStdDev(stdDev);
+			SimulatorRecord record = historical.simulateHistoricalAnalysis(swap, 86400000L /* 1 day */, 0.15);
+			List<SnapshotDescriptor> snapshots = record.getSnapshotDescriptorList();
+			List<TradeAction> actions = record.getTradeActionList();
+			for (TradeAction ta : actions) {
+				System.out.println(stdDev + " - " + ta.toString());
+			}
+			if (!snapshots.isEmpty()) {
+				SnapshotDescriptor descriptor = record.getSnapshotDescriptorList().get(record.getSnapshotDescriptorList().size() - 1);
+				System.out.println("StdDev: " + stdDev + " " + String.format("%.4f", descriptor.getTotalValue()) + " Trades: " + record.getTradeActionList().size());
+			}
+			stdDev += 0.02;
+//			if (!snapshots.isEmpty()) {
+//				SnapshotDescriptor descriptor = record.getSnapshotDescriptorList().get(record.getSnapshotDescriptorList().size() - 1);
+//				System.out.println("StdDev: " + stdDev + " " + String.format("%.4f", descriptor.getTotalValue()) + " Trades: " + record.getTradeActionList().size());
+//			} else {
+//				System.out.println("StdDev: " + stdDev + " " + String.format("%.4f", 1.0));
+//			}
+		//System.out.println(snapshots.get(0).getAmountCoin1()/snapshots.get(0).getAmountCoin2());
+		//System.out.println(snapshots.get(snapshots.size() - 1).getAmountCoin1()/snapshots.get(snapshots.size() - 1).getAmountCoin2());
+		}
+	}
+
+	//@Test
 	public void simulateRandom() {
 		tickerService.loadTickers();
 		tickerService.runRandomSimulation();
+	}
+
+
+	@Test
+	public void textMe() throws Exception {
+		notificationService.textMe("Text", "Hello World");
+	}
+	@Test
+	public void testDailyMonitor() {
+		monitorService.notifyBalanceEveryDay();
 	}
 }

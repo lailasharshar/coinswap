@@ -28,11 +28,27 @@ public class NotificationService {
 	@Value( "${notification.sendTo}" )
 	private String sendTo;
 
+	//@Value( "${notification.smsAddress}" )
+	private String smsAddress = "5551212@msg.fi.google.com";
+
 	public void notifyMe(String subject, String contentString) throws ScratchException {
 		Email from = new Email(sendFrom);
 		Email to = new Email(sendTo);
 		Content content = new Content("text/html", contentString);
 		Mail mail = new Mail(from, subject, to, content);
+		processMsg(mail);
+	}
+
+	public void textMe(String subject, String val) throws ScratchException {
+		Email from = new Email(sendFrom);
+		Email to = new Email(smsAddress);
+		Content content = new Content("text/plain", val);
+		System.out.println("Sending: " + subject + ", " + val);
+		Mail mail = new Mail(from, subject, to, content);
+		processMsg(mail);
+	}
+
+	public void processMsg(Mail mail) throws ScratchException {
 
 		SendGrid sg = new SendGrid(apiKey);
 		Request request = new Request();

@@ -6,6 +6,8 @@ import org.springframework.data.repository.CrudRepository;
 import java.util.List;
 
 /**
+ * Saves a definition of a swap
+ *
  * Created by lsharshar on 7/20/2018.
  */
 public interface SwapRepository extends CrudRepository<SwapDescriptor, Long>{
