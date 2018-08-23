@@ -10,7 +10,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import java.util.ArrayList;
@@ -52,12 +51,12 @@ public class SwapExecutorTest {
 		assertEquals(executor.getCurrentSwapState(), SwapExecutor.CurrentSwapState.OWNS_COIN_1);
 		assertEquals(swapDescriptor.getBaseCoin(), "BTC");
 		assertTrue(executor.getAmountCoin1OwnedFree() > 0);
-		System.out.println("Amount " + executor.getCache().getTicker1().getTickerBase() + " = " + executor.getAmountCoin1OwnedFree());
+		System.out.println("Amount " + executor.getCache().getTicker1().getAssetAndBase() + " = " + executor.getAmountCoin1OwnedFree());
 		System.out.println("Amount Commission coin owned: " + executor.getAmountCommissionAssetFree());
 		List<PriceData> priceData = new ArrayList<>();
 		Date now = new Date();
-		priceData.add(new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(0.0001).setTicker(executor.getCache().getTicker1().getTickerBase()).setUpdateTime(now));
-		priceData.add(new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(0.001).setTicker(executor.getCache().getTicker2().getTickerBase()).setUpdateTime(now));
+		priceData.add(new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(0.0001).setTicker(executor.getCache().getTicker1().getAssetAndBase()).setUpdateTime(now));
+		priceData.add(new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(0.001).setTicker(executor.getCache().getTicker2().getAssetAndBase()).setUpdateTime(now));
 		priceData.add(new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(0.01).setTicker(swapDescriptor.getCommissionCoin() + swapDescriptor.getBaseCoin()).setUpdateTime(now));
 		TradeAction action = executor.swapCoin1ToCoin2(priceData, true);
 
@@ -67,7 +66,7 @@ public class SwapExecutorTest {
 		SwapService.Swap swap2 = swapService.createComponent(swapDescriptor2);
 		SwapExecutor executor2 = swap2.getSwapExecutor();
 		assertEquals(executor2.getAmountCoin1OwnedFree(), 1.0, 0.0000001);
-		priceData.add(new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(0.0001).setTicker(executor2.getCache().getTicker2().getTickerBase()).setUpdateTime(now));
+		priceData.add(new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(0.0001).setTicker(executor2.getCache().getTicker2().getAssetAndBase()).setUpdateTime(now));
 		TradeAction action2 = executor2.swapCoin1ToCoin2(priceData, true);
 	}
 }

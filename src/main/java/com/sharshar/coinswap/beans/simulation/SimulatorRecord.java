@@ -2,6 +2,8 @@ package com.sharshar.coinswap.beans.simulation;
 
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import lombok.Data;
+import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -11,6 +13,8 @@ import java.util.List;
  * Holds summary information for analysis
  * Created by lsharshar on 7/30/2018.
  */
+@Data
+@Accessors(chain = true)
 public class SimulatorRecord {
 	public enum TradeDirection {
 		BUY_COIN_2,
@@ -19,9 +23,9 @@ public class SimulatorRecord {
 
 	private double initialBaseInvestment;
 	private SwapDescriptor descriptor;
-	private List<SnapshotDescriptor> snapshotDescriptorList;
+	private List<SnapshotDescriptor> snapshotDescriptorList = new ArrayList<>();
 	private double desiredStdDev;
-	private List<TradeAction> tradeActionList;
+	private List<TradeAction> tradeActionList = new ArrayList<>();
 	private Date startDate;
 	private Date endDate;
 
@@ -36,76 +40,8 @@ public class SimulatorRecord {
 				.setCommissionCoin(commissionCoin);
 		getSnapshotDescriptorList().add(sd);
 	}
-	public double getDesiredStdDev() {
-		return desiredStdDev;
-	}
-
-	public SimulatorRecord setDesiredStdDev(double desiredStdDev) {
-		this.desiredStdDev = desiredStdDev;
-		return this;
-	}
-
-	public double getInitialBaseInvestment() {
-		return initialBaseInvestment;
-	}
-
-	public SimulatorRecord setInitialBaseInvestment(double initialBaseInvestment) {
-		this.initialBaseInvestment = initialBaseInvestment;
-		return this;
-	}
-
-	public SwapDescriptor getDescriptor() {
-		return descriptor;
-	}
-
-	public SimulatorRecord setDescriptor(SwapDescriptor descriptor) {
-		this.descriptor = descriptor;
-		return this;
-	}
-
-	public List<SnapshotDescriptor> getSnapshotDescriptorList() {
-		if (snapshotDescriptorList == null) {
-			snapshotDescriptorList = new ArrayList<>();
-		}
-		return snapshotDescriptorList;
-	}
-
-	public SimulatorRecord setSnapshotDescriptorList(List<SnapshotDescriptor> snapshotDescriptorList) {
-		this.snapshotDescriptorList = snapshotDescriptorList;
-		return this;
-	}
-
-	public List<TradeAction> getTradeActionList() {
-		if (tradeActionList == null) {
-			tradeActionList = new ArrayList<>();
-		}
-		return tradeActionList;
-	}
 
 	public void addTradeAction(TradeAction ta) {
 		getTradeActionList().add(ta);
-	}
-
-	public SimulatorRecord setTradeActionList(List<TradeAction> tradeActionList) {
-		this.tradeActionList = tradeActionList;
-		return this;
-	}
-
-	public Date getStartDate() {
-		return startDate;
-	}
-
-	public SimulatorRecord setStartDate(Date startDate) {
-		this.startDate = startDate;
-		return this;
-	}
-
-	public Date getEndDate() {
-		return endDate;
-	}
-
-	public SimulatorRecord setEndDate(Date endDate) {
-		this.endDate = endDate;
-		return this;
 	}
 }

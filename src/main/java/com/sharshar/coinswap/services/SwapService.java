@@ -4,7 +4,7 @@ import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.repositories.SwapRepository;
 import com.sharshar.coinswap.repositories.TickerRepository;
-import com.sharshar.coinswap.utils.AccountServiceFactory;
+import com.sharshar.coinswap.utils.AccountServiceFinder;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,19 +28,9 @@ import java.util.stream.Collectors;
 public class SwapService {
 	private Logger logger = LogManager.getLogger();
 
-	public boolean shutdown() {
-		try {
-			Iterable<SwapDescriptor> dbSwaps = swapRepository.findAll();
-			for (SwapDescriptor swap : dbSwaps) {
-				swap.setActive(false);
-			}
-			swapRepository.saveAll(dbSwaps);
-			return true;
-		} catch (Exception ex) {
-			logger.error("Unable to shutdown swaps", ex);
-			return false;
-		}
-	}
+	@Autowired
+	private MasterSettingsService masterSettingsService;
+
 
 	/**
 	 * An object that contains all the information about a swap in one place
@@ -69,7 +59,7 @@ public class SwapService {
 	}
 
 	@Autowired
-	private AccountServiceFactory accountServiceFactory;
+	private AccountServiceFinder accountServiceFactory;
 
 	@Autowired
 	private CacheService cacheService;
@@ -96,6 +86,7 @@ public class SwapService {
 	 */
 	@PostConstruct
 	public void bootstrapSwaps() {
+		logger.info("Bootstrapping swaps");
 		if (swaps == null) {
 			swaps = new ArrayList<>();
 		}
@@ -108,6 +99,28 @@ public class SwapService {
 		}
 	}
 
+	public void shutdown() {
+		logger.info("Shutting down trade service");
+		masterSettingsService.shutdown();
+	}
+
+	public void pause() {
+		logger.info("Pausing trade service");
+		masterSettingsService.pauseService();
+	}
+
+	public void resume() {
+		logger.info("Resuming trade service - refreshing data");
+		masterSettingsService.resumeService();
+		// If we've paused, we need to reset so we don't act on old data
+		if (swaps != null) {
+			for (Swap swap : swaps) {
+				swap.getSwapExecutor().getCache().clear();
+				swap.getSwapExecutor().backFillData();
+			}
+		}
+	}
+
 	/**
 	 * Given a swap db descriptor, create its corresponding executing object.
 	 *
@@ -115,17 +128,19 @@ public class SwapService {
 	 * @return the object that knows how to execute the swap
 	 */
 	public Swap createComponent(SwapDescriptor swapDescriptor) {
-		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), swapDescriptor.isActive())) {
+		if (!validAddition(swapDescriptor.getExchangeObj(),
+				swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), swapDescriptor.getActive())) {
 			return null;
 		}
+		logger.info("Creating component - " + swapDescriptor);
 		SwapExecutor component = applicationContext.getBean(SwapExecutor.class, swapDescriptor,
-				accountServiceFactory.getAccountService(swapDescriptor.getExchange()));
+				accountServiceFactory.getAccountService(swapDescriptor.getExchangeObj()));
 		Swap swap = new Swap();
 		swap.setSwapDescriptor(swapDescriptor);
 		swap.setSwapExecutor(component);
 		component.setCache(cacheService.createCache(swapDescriptor, tickerRepository.findAll()));
 		component.backFillData();
-		if (swapDescriptor.isActive()) {
+		if (swapDescriptor.getActive()) {
 			component.seedMeMoney(1.0);
 		}
 		return swap;
@@ -144,10 +159,11 @@ public class SwapService {
 		if (swapDescriptor == null) {
 			return null;
 		}
-		Swap swap = getMatch(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2());
+		Swap swap = getMatch(swapDescriptor.getExchangeObj(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2());
 		if (swap == null) {
 			return null;
 		}
+		logger.info("Setting " + active + " - " + swapDescriptor);
 		swapDescriptor.setActive(active);
 		swap.getSwapExecutor().resetActive(active);
 		swapDescriptor = swapRepository.save(swapDescriptor);
@@ -177,11 +193,12 @@ public class SwapService {
 	 * @return the swap descriptor
 	 */
 	public SwapDescriptor addComponement(SwapDescriptor swapDescriptor) {
-		Swap match = getMatch(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2());
+		Swap match = getMatch(swapDescriptor.getExchangeObj(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2());
 		if (match != null) {
 			return match.getSwapDescriptor();
 		}
-		if (!validAddition(swapDescriptor.getExchange(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), swapDescriptor.isActive())) {
+		if (!validAddition(swapDescriptor.getExchangeObj(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(),
+				swapDescriptor.getActive())) {
 			return null;
 		}
 		Swap component = createComponent(swapDescriptor);
@@ -205,6 +222,7 @@ public class SwapService {
 		Swap match = getMatch(exchange, coin1, coin1);
 		while (match != null) {
 			swaps.remove(match);
+			logger.info("Removing: " + match.getSwapDescriptor());
 			match = getMatch(exchange, coin1, coin1);
 		}
 
@@ -229,7 +247,7 @@ public class SwapService {
 		return swapList.stream()
 				.filter(c -> coin1.equalsIgnoreCase(c.getSwapDescriptor().getCoin1()))
 				.filter(c -> coin2.equalsIgnoreCase(c.getSwapDescriptor().getCoin2()))
-				.filter(c -> c.getSwapDescriptor().getExchange() == exchange)
+				.filter(c -> c.getSwapDescriptor().getExchangeObj() == exchange)
 				.findFirst().orElse(null);
 	}
 
@@ -272,7 +290,7 @@ public class SwapService {
 
 		// If they are the same coin(s), but different exchanges, go for it. No conflict.
 		Swap sameExchange = similarOnes.stream()
-				.filter(c -> c.getSwapDescriptor().getExchange() == exchange).findFirst().orElse(null);
+				.filter(c -> c.getSwapDescriptor().getExchangeObj() == exchange).findFirst().orElse(null);
 
 		return sameExchange == null;
 	}

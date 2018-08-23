@@ -1,6 +1,8 @@
 package com.sharshar.coinswap.controllers;
 
+import com.sharshar.coinswap.beans.OrderHistory;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.services.OrderHistoryService;
 import com.sharshar.coinswap.services.SwapService;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,9 @@ public class SwapController {
 
 	@Autowired
 	private SwapService swapService;
+
+	@Autowired
+	private OrderHistoryService orderHistoryService;
 
 	@PostMapping("/swaps")
 	public SwapDescriptor addSwapComponent(@RequestBody SwapDescriptor swap) {
@@ -55,12 +60,24 @@ public class SwapController {
 		return swapExecutors.stream().map(SwapService.Swap::getSwapDescriptor).collect(Collectors.toList());
 	}
 
+	@GetMapping("/orders")
+	public Iterable<OrderHistory> getOrderHistories() {
+		return orderHistoryService.getAllOrders();
+	}
+
 	@GetMapping("/shutdown")
 	private String shutdown() {
-		if (swapService.shutdown()) {
-			return "Shutdown";
-		} else {
-			return "Error";
-		}
+		swapService.shutdown();
+		return "Shutdown";
+	}
+	@GetMapping("/pause")
+	private String pause() {
+		swapService.pause();
+		return "Pausing";
+	}
+	@GetMapping("/resume")
+	private String resume() {
+		swapService.resume();
+		return "Resuming...";
 	}
 }

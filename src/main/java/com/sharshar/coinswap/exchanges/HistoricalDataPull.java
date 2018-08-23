@@ -77,6 +77,7 @@ public class HistoricalDataPull {
 	public List<Data> getData(String coin, String refCurrency, int numPulled, String exchange) {
 		List<Data> d = new ArrayList<>();
 		Date endDate = new Date();
+		logger.info("Getting historical data for " + coin + refCurrency);
 		HistoryResponse response = getHistory(coin, refCurrency, endDate, exchange, numPulled);
 		if (response == null || response.getData() == null || response.getData().isEmpty() &&
 				!"Success".equalsIgnoreCase(response.getResponse())) {

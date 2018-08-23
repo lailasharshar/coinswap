@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
  * Created by lsharshar on 7/20/2018.
  */
 @Service
-public class AccountServiceFactory {
+public class AccountServiceFinder {
 	@Autowired
 	private BinanceAccountServices binanceAccountServices;
 

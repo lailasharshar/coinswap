@@ -1,12 +1,11 @@
 package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.beans.PriceData;
-import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.components.ExchangeCache;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.exchanges.AccountService;
-import com.sharshar.coinswap.utils.AccountServiceFactory;
+import com.sharshar.coinswap.utils.AccountServiceFinder;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,142 +34,55 @@ public class PriceUpdaterService {
 	private SwapService swapService;
 
 	@Autowired
-	private NotificationService notificationService;
+	private MessageService messageService;
 
 	@Autowired
-	AccountServiceFactory factory;
+	private AccountServiceFinder factory;
+
+	@Autowired
+	private MasterSettingsService masterSettingsService;
 
 	@Scheduled(fixedRateString = "${timing.updatePrice}", initialDelayString = "${timing.initialDelay}")
 	public void updatePriceData() {
-
+		if (!masterSettingsService.areWeRunning()) {
+			return;
+		}
+		logger.info("Updating price data");
 		List<SwapService.Swap> swaps = swapService.getSwaps();
 		Map<ScratchConstants.Exchange, List<PriceData>> priceDataForAllExchanges = getAllPriceDataForAllExchanges(swaps);
 		for (SwapService.Swap swap : swaps) {
-			ScratchConstants.Exchange exchange = swap.getSwapDescriptor().getExchange();
+			ScratchConstants.Exchange exchange = swap.getSwapDescriptor().getExchangeObj();
 			List<PriceData> exchangeData = priceDataForAllExchanges.get(exchange);
 			ExchangeCache.Position position = swap.getSwapExecutor().getCache().addPriceData(exchangeData);
 			TradeAction action = null;
 			if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_1 &&
 					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
-				action = swap.getSwapExecutor().swapCoin1ToCoin2(exchangeData, swap.getSwapDescriptor().isSimulate());
+				logger.info("Above desired ration - swapping: " + swap.getSwapDescriptor().getCoin1() + " for " +
+						swap.getSwapDescriptor().getCoin2());
+				action = swap.getSwapExecutor().swapCoin1ToCoin2(exchangeData, swap.getSwapDescriptor().getSimulate());
 			} else {
 				if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
 						position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
-					action = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, swap.getSwapDescriptor().isSimulate());
+					logger.info("Below desired ration - swapping: " + swap.getSwapDescriptor().getCoin2() + " for " +
+							swap.getSwapDescriptor().getCoin1());
+					action = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, swap.getSwapDescriptor().getSimulate());
 				}
 			}
-			String valString = summarizeSwap(action, swap);
-			if (valString != null && !valString.isEmpty()) {
-				try {
-					notificationService.notifyMe("Swap Result", valString);
-					notificationService.textMe("Swap Result", action.toString());
-				} catch (Exception ex) {
-					logger.error("Unable to notify me\n" + valString);
-				}
-			}
+			messageService.summarizeTrade(swap, action);
 		}
-	}
-
-	public String summarizeSwap(TradeAction action, SwapService.Swap swap) {
-		if (action == null) {
-			return null;
-		}
-		StringBuilder s = new StringBuilder();
-		s.append("Response Code: ").append(action.getResponseCode()).append("\n");
-		switch (action.getResponseCode()) {
-			// Poorly formed
-
-			case NO_COIN_1_DEFINED:
-			case NO_COIN_2_DEFINED:
-			case NO_BASE_COIN_DEFINED:
-			case NO_COMMISSION_COIN_DEFINED:
-			case NO_SWAP_DEFINITION_DEFINED:
-				s.append("Swap poorly defined\n");
-				break;
-
-			// The incomplete
-
-			case SELL_ORDER_NEW:
-			case SELL_ORDER_FILLED:
-			case SELL_ORDER_PARTIAL_FILLED:
-			case BUY_ORDER_NEW:
-			case BUY_ORDER_FILLED:
-			case BUY_ORDER_PARTIAL_FILLED:
-				s.append("Order Incomplete\n");
-				break;
-
-			// The errors
-			case SELL_ORDER_CANCELLED:
-			case SELL_ORDER_PENDING_CANCEL:
-			case SELL_ORDER_REJECTED:
-			case SELL_ORDER_EXPIRED:
-			case BUY_ORDER_CANCELLED:
-			case BUY_ORDER_PENDING_CANCEL:
-			case BUY_ORDER_REJECTED:
-			case BUY_ORDER_EXPIRED:
-			case SELL_ORDER_ERROR:
-			case BUY_ORDER_ERROR:
-			case UNABLE_TO_UPDATE_COIN_BALANCES:
-				s.append("Error Occurred\n");
-				break;
-
-			case NOT_ENOUGH_COMMISSION_CURRENCY:
-				s.append("Not enough commission currency\n");
-				break;
-		}
-
-		if (action.getResponseCode() != TRANSACTION_SUCCESSFUL) {
-			return s.toString();
-		}
-		// Full success - specify current state
-		SwapExecutor executor = swap.getSwapExecutor();
-		ExchangeCache cache = executor.getCache();
-		SwapDescriptor descriptor = swap.getSwapDescriptor();
-		s.append("Setup:").append("-------------\n");
-		s.append("Desired Std Deviation: ").append(descriptor.getDesiredStdDev()).append("\n");
-		s.append("Max ").append(descriptor.getCoin1()).append(" to buy: ").append(cache.getTicker1().getMaxQty()).append("\n");
-		s.append("Max ").append(descriptor.getCoin2()).append(" to buy: ").append(cache.getTicker2().getMaxQty()).append("\n");
-
-		s.append("\nCurrent Status (as of ").append(cache.getLatestUpdate()).append("):").append("-------------\n");
-
-		double lastPrice1 = cache.getLastPriceData(descriptor.getCoin1() + descriptor.getBaseCoin()).getPrice();
-		double amountBtc1 = executor.getAmountCoin1OwnedFree() * lastPrice1;
-		s.append("Current status: ").append(executor.getCurrentSwapState()).append("\n");
-		s.append(cache.getTicker1()).append(" Owns: ")
-				.append(String.format("%.6f", executor.getAmountCoin1OwnedFree())) .append(" @ ")
-				.append(String.format("%.6f", lastPrice1)) .append(" = ")
-				.append(String.format("%.6f", amountBtc1)) .append("\n");
-		double lastPrice2 = cache.getLastPriceData(descriptor.getCoin2() + descriptor.getBaseCoin()).getPrice();
-		double amountBtc2 = executor.getAmountCoin1OwnedFree() * lastPrice2;
-		s.append(cache.getTicker2()).append(" Owns: ")
-				.append(String.format("%.6f", executor.getAmountCoin2OwnedFree())) .append(" @ ")
-				.append(String.format("%.6f", lastPrice2)) .append(" = ")
-				.append(String.format("%.6f", amountBtc2)) .append("\n");
-
-		double lastCommissionPrice = cache.getLastPriceData(descriptor.getCommissionCoin() + descriptor.getBaseCoin()).getPrice();
-		double amountBtcCommission = executor.getAmountCoin1OwnedFree() * lastCommissionPrice;
-		s.append(descriptor.getCommissionCoin()).append(" Owns: ")
-				.append(String.format("%.6f", executor.getAmountCommissionAssetFree())) .append(" @ ")
-				.append(String.format("%.6f", lastCommissionPrice)) .append(" = ")
-				.append(String.format("%.6f", amountBtcCommission)) .append("\n");
-
-		s.append("Last Mean Ratio: ").append(String.format("%.6f", cache.getLastMeanRatio())).append("\n");
-		s.append("Last Std Dev: ").append(String.format("%.6f", cache.getLastStandardDeviation())).append("\n");
-		s.append("Last High Ratio: ").append(String.format("%.6f", cache.getHighRatio())).append("\n");
-		s.append("Last Low Ratio: ").append(String.format("%.6f", cache.getLowRatio())).append("\n");
-
-		return s.toString();
 	}
 
 	private Map<ScratchConstants.Exchange, List<PriceData>> getAllPriceDataForAllExchanges(List<SwapService.Swap> swaps) {
 		// Find the unique exchanges we're pulling data from
 		List<ScratchConstants.Exchange> allExchanges = swaps.stream()
-				.map(c -> c.getSwapDescriptor().getExchange()).distinct().collect(Collectors.toList());
+				.map(c -> c.getSwapDescriptor().getExchangeObj()).distinct().collect(Collectors.toList());
 
 		// For each cache service, find it's account service and save it if is not known
 		Map<ScratchConstants.Exchange, AccountService> services = new HashMap<>();
 		for (SwapService.Swap swap : swaps) {
-			services.computeIfAbsent(swap.getSwapDescriptor().getExchange(), e -> factory.getAccountService(e));
+			services.computeIfAbsent(
+					swap.getSwapDescriptor().getExchangeObj(),
+					e -> factory.getAccountService(e));
 		}
 
 		// For each exchange, retrieve the updated price data

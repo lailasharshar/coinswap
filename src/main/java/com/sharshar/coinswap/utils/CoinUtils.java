@@ -20,6 +20,9 @@ public class CoinUtils {
 	 * @return the specific asset we are looking for, or null if you don't own any
 	 */
 	public static OwnedAsset getAssetValue(String coin, List<OwnedAsset> ownedAssets) {
+		if (ownedAssets == null || coin == null) {
+			return null;
+		}
 		OwnedAsset coinAsset = ownedAssets.stream()
 				.filter(c -> c.getAsset().equalsIgnoreCase(coin)).findFirst().orElse(null);
 		if (coinAsset == null) {
@@ -48,6 +51,9 @@ public class CoinUtils {
 	 * @return - the price data object you are looking for, or null if it's not there
 	 */
 	public static PriceData getPriceData(String ticker, List<PriceData> priceData) {
+		if (priceData == null || ticker == null) {
+			return null;
+		}
 		return priceData.stream()
 				.filter(c -> c.getTicker().equalsIgnoreCase(ticker))
 				.findFirst().orElse(null);

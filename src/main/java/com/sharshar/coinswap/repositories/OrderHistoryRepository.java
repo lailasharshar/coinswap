@@ -12,4 +12,5 @@ import java.util.List;
  */
 public interface OrderHistoryRepository extends CrudRepository<OrderHistory, Long> {
 	List<OrderHistory> findByStatus(String status);
+	List<OrderHistory> findAllOrderByTransactTime();
 }

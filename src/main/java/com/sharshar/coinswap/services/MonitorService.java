@@ -22,36 +22,18 @@ public class MonitorService {
 	private Logger logger = LogManager.getLogger();
 
 	@Autowired
-	NotificationService notificationService;
+	BinanceAccountServices binanceAccountServices;
 
 	@Autowired
-	BinanceAccountServices binanceAccountServices;
+	MessageService messageService;
 
 	@Scheduled(cron = "0 0 8 * * *")
 	public void notifyBalanceEveryDay() {
-		StringBuilder results = new StringBuilder();
-		List<OwnedAsset> assetList = binanceAccountServices.getBalancesWithValues();
-		List<PriceData> priceData = binanceAccountServices.getAllPrices();
-		double totalAmountOfBtc = 0;
-		for (OwnedAsset asset : assetList) {
-			results.append("Asset: ").append(asset.getAsset()).append(" ")
-					.append(String.format("%.4f", asset.getFree()))
-					.append("/").append(String.format("%.4f", asset.getLocked()));
-			double assetPrice = 1;
-			if (!asset.getAsset().equalsIgnoreCase("BTC")) {
-				assetPrice = CoinUtils.getPrice(asset.getAsset() + "BTC", priceData);
-			}
-			double amountInBtc = (asset.getFree() + asset.getLocked()) * assetPrice;
-			results.append(" = ").append(String.format("%.4f", amountInBtc)).append("<br>");
-			totalAmountOfBtc += amountInBtc;
-		}
-		double totalDollars = CoinUtils.getPrice("BTCUSDT", priceData) * totalAmountOfBtc;
-		results.append("<br>").append("Total: ").append(String.format("%.4f", totalAmountOfBtc))
-				.append(" = ").append(String.format("%.4f", totalDollars)).append("<br>");
 		try {
-			notificationService.notifyMe("Daily Roundup", results.toString());
+			logger.info("Sending out daily roundup for Binance");
+			messageService.dailyRoundup(binanceAccountServices);
 		} catch (Exception ex)	{
-			logger.error("Unable to notify me of my daily roundup: " + results.toString(), ex);
+			logger.error("Unable to notify me of my daily roundup: ", ex);
 		}
 	}
 }

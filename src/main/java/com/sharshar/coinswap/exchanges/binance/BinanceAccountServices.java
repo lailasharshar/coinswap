@@ -84,7 +84,7 @@ public class BinanceAccountServices implements AccountService {
 			if (status != SymbolStatus.TRADING) {
 				continue;
 			}
-			Ticker ticker = new Ticker().setTicker(si.getBaseAsset()).setBase(si.getQuoteAsset())
+			Ticker ticker = new Ticker().setAsset(si.getBaseAsset()).setBase(si.getQuoteAsset())
 					.setExchange(ScratchConstants.Exchange.BINANCE);
 			SymbolFilter lotFilter = si.getSymbolFilter(FilterType.LOT_SIZE);
 			ticker.setMinQty(Double.parseDouble(lotFilter.getMinQty()));

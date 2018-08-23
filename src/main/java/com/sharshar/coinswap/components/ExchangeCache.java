@@ -55,12 +55,9 @@ public class ExchangeCache {
 			return null;
 		}
 
-		if (coin.equals(baseCoin)) {
-			return new Ticker().setFoundDate(new Date(0)).setExchange(exchange).setTicker(baseCoin).setBase(baseCoin);
-		}
 		for (Ticker ticker : allTickers) {
 			if (ticker.getExchange() == exchange && ticker.getRetired() == null
-					&& ticker.getTicker().equalsIgnoreCase(coin) && ticker.getBase().equalsIgnoreCase(baseCoin)) {
+					&& ticker.getAsset().equalsIgnoreCase(coin) && ticker.getBase().equalsIgnoreCase(baseCoin)) {
 				return ticker;
 			}
 		}
@@ -70,7 +67,7 @@ public class ExchangeCache {
 	public ExchangeCache(SwapDescriptor swapDescriptor, int cacheSize, Iterable<Ticker> allTickers) {
 		// Init variables
 		this.swapDescriptor = swapDescriptor;
-		this.exchange = swapDescriptor.getExchange();
+		this.exchange = swapDescriptor.getExchangeObj();
 		this.cacheSize = cacheSize;
 		this.allTickers = allTickers;
 		if (this.cacheSize == 0) {
@@ -100,13 +97,15 @@ public class ExchangeCache {
 			logger.error("Invalid price data added to cache");
 			return INVALID_DATA;
 		}
-		PriceData currentPd1 = CoinUtils.getPriceData(ticker1.getTickerBase(), priceData);
+		PriceData currentPd1 = CoinUtils.getPriceData(ticker1.getAssetAndBase(), priceData);
+		PriceData currentPd2 = CoinUtils.getPriceData(ticker2.getAssetAndBase(), priceData);
+		PriceData commissionPd = CoinUtils.getPriceData(commissionTicker.getAssetAndBase(), priceData);
+		if (currentPd1 == null || currentPd2 == null || commissionTicker == null) {
+			logger.error("Could not find price data for one of the coins");
+			return INVALID_DATA;
+		}
 		priceCache.get(ticker1).add(currentPd1);
-
-		PriceData currentPd2 = CoinUtils.getPriceData(ticker2.getTickerBase(), priceData);
 		priceCache.get(ticker2).add(currentPd2);
-
-		PriceData commissionPd = CoinUtils.getPriceData(commissionTicker.getTickerBase(), priceData);
 		priceCache.get(commissionTicker).add(commissionPd);
 
 		if (priceCache.get(ticker1).size() < cacheSize) {
@@ -123,8 +122,8 @@ public class ExchangeCache {
 		}
 		List<PriceData> tickerPd = priceCache.get(getTickerObjFromString(ticker));
 		if (tickerPd == null) {
-			logger.error("Invalid ticker: " + ticker + " passed to method. Must be " + ticker1.getTickerBase() +
-					" or " + ticker2.getTickerBase());
+			logger.error("Invalid ticker: " + ticker + " passed to method. Must be " + ticker1.getAssetAndBase() +
+					" or " + ticker2.getAssetAndBase());
 			return;
 		}
 		// Keep add, not add all since that's the method that checks to see if it's over the size limit
@@ -134,13 +133,13 @@ public class ExchangeCache {
 	}
 
 	private Ticker getTickerObjFromString(String ticker) {
-		if (ticker.equalsIgnoreCase(ticker1.getTicker() + ticker1.getBase())) {
+		if (ticker.equalsIgnoreCase(ticker1.getAssetAndBase())) {
 			return ticker1;
 		}
-		if (ticker.equalsIgnoreCase(ticker2.getTicker() + ticker2.getBase())) {
+		if (ticker.equalsIgnoreCase(ticker2.getAssetAndBase())) {
 			return ticker2;
 		}
-		if (ticker.equalsIgnoreCase(commissionTicker.getTicker() + commissionTicker.getBase())) {
+		if (ticker.equalsIgnoreCase(commissionTicker.getAssetAndBase())) {
 			return commissionTicker;
 		}
 		return null;

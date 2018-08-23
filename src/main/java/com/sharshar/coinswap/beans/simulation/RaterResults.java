@@ -1,6 +1,8 @@
 package com.sharshar.coinswap.beans.simulation;
 
 import com.sharshar.coinswap.utils.AnalysisUtils;
+import lombok.Data;
+import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,8 +12,10 @@ import java.util.List;
  *
  * Created by lsharshar on 7/31/2018.
  */
+@Data
+@Accessors(chain = true)
 public class RaterResults {
-	private List<Double> multipliers;
+	private List<Double> multipliers = new ArrayList<>();
 	private double mean;
 	private double stdDev;
 
@@ -24,14 +28,6 @@ public class RaterResults {
 	private void getMultipliers(List<SnapshotDescriptor> snapshots) {
 		List<Double> diffs = getDiffs(snapshots);
 		multipliers = getMultipliersFromDiffs(diffs);
-	}
-
-	public double getMean() {
-		return mean;
-	}
-
-	public double getStdDev() {
-		return stdDev;
 	}
 
 	private List<Double> getMultipliersFromDiffs(List<Double> diffs) {

@@ -7,7 +7,7 @@ import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.repositories.SimulationRunRepository;
 import com.sharshar.coinswap.repositories.SimulationRunSnapshotRepository;
 import com.sharshar.coinswap.repositories.TickerRepository;
-import com.sharshar.coinswap.utils.AccountServiceFactory;
+import com.sharshar.coinswap.utils.AccountServiceFinder;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -44,13 +44,13 @@ public class TickerService {
 	private HistoricalAnalysisService historicalAnalysisService;
 
 	@Autowired
-	private AccountServiceFactory accountServiceFactory;
+	private AccountServiceFinder accountServiceFactory;
 
 	@Autowired
 	private TickerRepository tickerRepository;
 
 	@Autowired
-	private NotificationService notificationService;
+	private MessageService messageService;
 
 	private List<Ticker> tickerList;
 
@@ -65,10 +65,10 @@ public class TickerService {
 
 	@Scheduled(fixedRateString = "${timing.updateTicker}", initialDelayString = "${timing.initialDelay}")
 	public void loadTickers() {
-		load(ScratchConstants.Exchange.BINANCE);
+		reconcileDbListWithExchangeList(ScratchConstants.Exchange.BINANCE);
 	}
 
-	private List<Ticker> getTickerList() {
+	private List<Ticker> loadTickerListFromDb() {
 		if (this.tickerList == null) {
 			this.tickerList = new ArrayList<>();
 			Iterable<Ticker> tickerIterable = tickerRepository.findAll();
@@ -77,24 +77,33 @@ public class TickerService {
 		return tickerList;
 	}
 
-	private void load(ScratchConstants.Exchange exchange) {
+	public List<Ticker> getTickersFromExchange(ScratchConstants.Exchange exchange) {
 		AccountService accountService = accountServiceFactory.getAccountService(exchange);
 		// Retrieve the list from exchange
 		logger.info("Loading " + exchange.getExchangeName() + " Binance Tickers");
-		List<Ticker> tickers;
+		List<Ticker> tickers = new ArrayList<>();
 		try {
 			tickers = accountService.getTickerDefinitions();
 		} catch (Exception ex) {
-			logger.error("Unable to load Binance data", ex);
-			return;
+			logger.error("Unable to reconcileDbListWithExchangeList " + exchange.getExchangeName() + " data", ex);
+			return new ArrayList<>();
 		}
+		for (Ticker ticker : tickers) {
+			ticker.setLastVolume(accountService.get24HourVolume(ticker.getAssetAndBase()));
+		}
+		return tickers;
+	}
+
+	private void reconcileDbListWithExchangeList(ScratchConstants.Exchange exchange) {
+		List<Ticker> tickers = getTickersFromExchange(exchange);
 		logger.info(tickers.size() + " Tickers");
+
 		List<Ticker> addedTickers = new ArrayList<>();
+
 		// If they already exist, update any data about them, otherwise insert them
 		Date now = new Date();
 		for (Ticker ticker : tickers) {
-			ticker.setLastVolume(accountService.get24HourVolume(ticker.getTickerBase()));
-			Ticker found = getInList(ticker, getTickerList());
+			Ticker found = getInList(ticker, loadTickerListFromDb());
 			if (found == null) {
 				addedTickers.add(ticker);
 				ticker.setFoundDate(now);
@@ -112,7 +121,7 @@ public class TickerService {
 		List<Ticker> retiredTickers = new ArrayList<>();
 
 		// Figure out which ones that need to be retired
-		for (Ticker dbTicker : getTickerList()) {
+		for (Ticker dbTicker : loadTickerListFromDb()) {
 			Ticker found = getInList(dbTicker, tickers);
 			// We didn't find it in the new list, and it hasn't already been retired, retire it
 			if (found == null && dbTicker.getRetired() == null) {
@@ -122,7 +131,7 @@ public class TickerService {
 			}
 		}
 		// Notify any changes
-		notifyChanges(addedTickers, retiredTickers);
+		messageService.notifyChanges(addedTickers, retiredTickers);
 	}
 
 	/*
@@ -133,44 +142,11 @@ public class TickerService {
 			return null;
 		}
 		return tickers.stream().filter(c -> c.getBase() != null && c.getBase().equalsIgnoreCase(ticker.getBase()))
-				.filter(c -> c.getTicker() != null && c.getTicker().equalsIgnoreCase(ticker.getTicker()))
+				.filter(c -> c.getAsset() != null && c.getAsset().equalsIgnoreCase(ticker.getAsset()))
 				.filter(c -> c.getExchange() == ticker.getExchange()).findFirst().orElse(null);
 	}
 
-	private void notifyChanges(List<Ticker> addedTickers, List<Ticker> removedTickers) {
-		if ((addedTickers == null || addedTickers.isEmpty())
-				&& (removedTickers == null || removedTickers.isEmpty())) {
-			// Both are empty, do nothing
-			return;
-		}
-		StringBuilder content = new StringBuilder();
-		if (addedTickers != null && !addedTickers.isEmpty()) {
-			content.append("Added Tickers (").append(addedTickers.size()).append("): <br><br>");
-			logger.info("Added Tickers (" + addedTickers.size() + ")");
-			for (Ticker s : addedTickers) {
-				content.append(s.getTableId()).append(s.getBase()).append("<br>");
-			}
-			content.append("<br><br>");
-		}
-		if (removedTickers != null && !removedTickers.isEmpty()) {
-			content.append("Removed Tickers (").append(removedTickers.size()).append("): <br><br>");
-			logger.info("Removed Tickers (" + removedTickers.size() + ")");
-			for (Ticker s : removedTickers) {
-				content.append(s.getTicker()).append(s.getBase()).append("<br>");
-			}
-			content.append("<br><br>");
-		}
-		try {
-			String subject = "Exchange Ticker Changes (" +
-					(addedTickers == null ? 0 : addedTickers.size()) +
-					" Added/" +
-					(removedTickers == null ? 0 : removedTickers.size()) +
-					" Removed";
-			notificationService.notifyMe(subject, content.toString());
-		} catch (Exception ex) {
-			logger.error("Unable to alert to new/retired tickers: " + content.toString(), ex);
-		}
-	}
+
 
 	//@Scheduled(fixedRate = 5000)
 	public void runTimedSimulation() {
@@ -195,7 +171,7 @@ public class TickerService {
 		double desiredStdDev = (Math.random() * 3);
 		Ticker ticker1 = itemsToUse.get(selectItem1);
 		Ticker ticker2 = itemsToUse.get(selectItem2);
-		SwapDescriptor sd = new SwapDescriptor().setCoin1(ticker1.getTicker()).setCoin2(ticker2.getTicker())
+		SwapDescriptor sd = new SwapDescriptor().setCoin1(ticker1.getAsset()).setCoin2(ticker2.getAsset())
 				.setActive(false).setCommissionCoin(commissionAsset).setDesiredStdDev(desiredStdDev)
 				.setBaseCoin("BTC").setSimulate(true).setMaxPercentVolume(0.1)
 				.setExchange(ScratchConstants.Exchange.BINANCE.getValue());

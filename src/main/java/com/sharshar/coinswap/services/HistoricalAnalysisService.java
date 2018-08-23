@@ -59,7 +59,7 @@ public class HistoricalAnalysisService {
 			return null;
 		}
 		List<List<PriceData>> priceData = loadPriceData(descriptor.getCoin1(), descriptor.getCoin2(),
-				descriptor.getBaseCoin(), descriptor.getCommissionCoin(), 0, descriptor.getExchange());
+				descriptor.getBaseCoin(), descriptor.getCommissionCoin(), 0, descriptor.getExchangeObj());
 		List<List<PriceData>> cleanedUpList = cleanUpData(priceData);
 		List<List<PriceData>> distributedData = distributeDataByDate(cleanedUpList);
 		SwapDescriptor swapDescriptor = SerializationUtils.clone(descriptor);
@@ -90,7 +90,6 @@ public class HistoricalAnalysisService {
 		// which we are now replacing
 		executor.getCache().clear();
 
-
 		record.setDescriptor(sd);
 		record.setInitialBaseInvestment(seedMoney);
 		record.setDesiredStdDev(sd.getDesiredStdDev());
@@ -114,12 +113,12 @@ public class HistoricalAnalysisService {
 			}
 			if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_1 &&
 					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
-				TradeAction action = swap.getSwapExecutor().swapCoin1ToCoin2(pdList, swap.getSwapDescriptor().isSimulate());
+				TradeAction action = swap.getSwapExecutor().swapCoin1ToCoin2(pdList, swap.getSwapDescriptor().getSimulate());
 				record.addTradeAction(action);
 			} else {
 				if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
 						position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
-					TradeAction action = swap.getSwapExecutor().swapCoin2ToCoin1(pdList, swap.getSwapDescriptor().isSimulate());
+					TradeAction action = swap.getSwapExecutor().swapCoin2ToCoin1(pdList, swap.getSwapDescriptor().getSimulate());
 					record.addTradeAction(action);
 				}
 			}
