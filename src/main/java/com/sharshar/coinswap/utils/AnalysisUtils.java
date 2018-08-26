@@ -39,9 +39,6 @@ public class AnalysisUtils {
 			return 0;
 		}
 		double totalSquared = data.stream().mapToDouble(c -> Math.pow(Math.abs(c - mean), 2)).sum();
-		if (data.isEmpty()) {
-			return 0;
-		}
 		double meanOfSquared = totalSquared/(data.size() - 1);
 		return Math.sqrt(meanOfSquared);
 	}

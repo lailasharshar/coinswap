@@ -25,7 +25,7 @@ public class Ticker {
 	@Column(name = "ticker")
 	private String asset;
 	private String base;
-	private ScratchConstants.Exchange exchange;
+	private short exchange;
 	private Date foundDate;
 	private Date retired;
 	private Date updatedDate;
@@ -36,7 +36,7 @@ public class Ticker {
 
 	public Ticker() {}
 
-	public Ticker(String tickerAndBase, ScratchConstants.Exchange exchange, List<String> baseCurrencies) {
+	public Ticker(String tickerAndBase, short exchange, List<String> baseCurrencies) {
 		this.exchange = exchange;
 		if (baseCurrencies == null || tickerAndBase == null || tickerAndBase.isEmpty()) {
 			return;

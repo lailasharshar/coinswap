@@ -36,6 +36,8 @@ public class AnalysisUtilsTest {
 		values.add(12.0);
 		values.add(7.0);
 		double stddev = AnalysisUtils.getStdDev(values, AnalysisUtils.getMean(values));
+		assertEquals(0.0, AnalysisUtils.getStdDev(null, 0), 0.00001);
+		assertEquals(0.0, AnalysisUtils.getStdDev(new ArrayList<>(), 0), 0.00001);
 		assertEquals(3.6193922141707713, stddev, 0.00001);
 	}
 

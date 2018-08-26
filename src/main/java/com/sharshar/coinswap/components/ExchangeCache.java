@@ -50,13 +50,13 @@ public class ExchangeCache {
 
 	private Map<Ticker, List<PriceData>> priceCache;
 
-	private Ticker loadTicker(String coin, String baseCoin) {
+	private Ticker loadTicker(String coin, String baseCoin, short exchangeVal) {
 		if (allTickers == null) {
 			return null;
 		}
 
 		for (Ticker ticker : allTickers) {
-			if (ticker.getExchange() == exchange && ticker.getRetired() == null
+			if (ticker.getExchange() == exchangeVal && ticker.getRetired() == null
 					&& ticker.getAsset().equalsIgnoreCase(coin) && ticker.getBase().equalsIgnoreCase(baseCoin)) {
 				return ticker;
 			}
@@ -75,9 +75,9 @@ public class ExchangeCache {
 		}
 
 		// Map them to real ticker information and create an array for the data for each
-		this.ticker1 = loadTicker(swapDescriptor.getCoin1(), swapDescriptor.getBaseCoin());
-		this.ticker2 = loadTicker(swapDescriptor.getCoin2(), swapDescriptor.getBaseCoin());
-		this.commissionTicker = loadTicker(swapDescriptor.getCommissionCoin(), swapDescriptor.getBaseCoin());
+		this.ticker1 = loadTicker(swapDescriptor.getCoin1(), swapDescriptor.getBaseCoin(), exchange.getValue());
+		this.ticker2 = loadTicker(swapDescriptor.getCoin2(), swapDescriptor.getBaseCoin(), exchange.getValue());
+		this.commissionTicker = loadTicker(swapDescriptor.getCommissionCoin(), swapDescriptor.getBaseCoin(), exchange.getValue());
 
 		priceCache = new HashMap<>();
 		priceCache.put(ticker1, new LimitedArrayList<>(this.cacheSize));

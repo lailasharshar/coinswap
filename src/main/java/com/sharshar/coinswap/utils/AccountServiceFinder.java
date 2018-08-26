@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
+ * Right now, just one service, should extend in the future
+ *
  * Created by lsharshar on 7/20/2018.
  */
 @Service

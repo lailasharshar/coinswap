@@ -68,7 +68,7 @@ public class TickerService {
 		reconcileDbListWithExchangeList(ScratchConstants.Exchange.BINANCE);
 	}
 
-	private List<Ticker> loadTickerListFromDb() {
+	public List<Ticker> loadTickerListFromDb() {
 		if (this.tickerList == null) {
 			this.tickerList = new ArrayList<>();
 			Iterable<Ticker> tickerIterable = tickerRepository.findAll();

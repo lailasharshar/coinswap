@@ -15,6 +15,6 @@ public class OrderHistoryService {
 	private OrderHistoryRepository orderHistoryRepository;
 
 	public Iterable<OrderHistory> getAllOrders() {
-		return orderHistoryRepository.findAllOrderByTransactTime();
+		return orderHistoryRepository.findAllByOrderByCreateDtmDesc();
 	}
 }

@@ -140,7 +140,7 @@ public class SwapService {
 		swap.setSwapExecutor(component);
 		component.setCache(cacheService.createCache(swapDescriptor, tickerRepository.findAll()));
 		component.backFillData();
-		if (swapDescriptor.getActive()) {
+		if (swapDescriptor.getActive() != null && swapDescriptor.getActive()) {
 			component.seedMeMoney(1.0);
 		}
 		return swap;
@@ -264,8 +264,8 @@ public class SwapService {
 	 * @param coin2    - the second coin
 	 * @return if it is a valid addition
 	 */
-	private boolean validAddition(ScratchConstants.Exchange exchange, String coin1, String coin2, boolean active) {
-		if (!active) {
+	private boolean validAddition(ScratchConstants.Exchange exchange, String coin1, String coin2, Boolean active) {
+		if (active == null || !active) {
 			return false;
 		}
 		// We don't want to add anything that could conflict with another swap
