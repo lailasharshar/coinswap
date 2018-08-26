@@ -28,8 +28,8 @@ public class NotificationService {
 	@Value( "${notification.sendTo}" )
 	private String sendTo;
 
-	//@Value( "${notification.smsAddress}" )
-	private String smsAddress = "5551212@msg.fi.google.com";
+	@Value( "${notification.smsAddress}" )
+	private String smsAddress;
 
 	public void notifyMe(String subject, String contentString) throws ScratchException {
 		Email from = new Email(sendFrom);
@@ -43,24 +43,28 @@ public class NotificationService {
 		Email from = new Email(sendFrom);
 		Email to = new Email(smsAddress);
 		Content content = new Content("text/plain", val);
-		System.out.println("Sending: " + subject + ", " + val);
+		logger.info("Texting: " + subject + ", " + val);
 		Mail mail = new Mail(from, subject, to, content);
 		processMsg(mail);
 	}
 
-	public void processMsg(Mail mail) throws ScratchException {
+	private void processMsg(Mail mail) throws ScratchException {
 
 		SendGrid sg = new SendGrid(apiKey);
 		Request request = new Request();
+		Response response = null;
 		try {
 			request.setMethod(Method.POST);
 			request.setEndpoint("mail/send");
 			request.setBody(mail.build());
-			Response response = sg.api(request);
-			logger.info(response.getStatusCode());
-			logger.info(response.getBody());
-			logger.info(response.getHeaders());
+			response = sg.api(request);
 		} catch (IOException ex) {
+			logger.error(response.getStatusCode());
+			logger.error(response.getBody());
+			logger.error(response.getHeaders());
+			if (mail.getContent() != null && mail.getContent().size() > 0) {
+				logger.error(mail.getSubject() + " - " + mail.getContent().get(0).getValue());
+			}
 			throw new ScratchException("Error sending notification to me", ex);
 		}
 	}

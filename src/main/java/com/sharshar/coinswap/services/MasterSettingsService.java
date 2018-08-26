@@ -50,6 +50,7 @@ public class MasterSettingsService {
 	}
 
 	public boolean areWeRunning() {
-		return currentStatus == SystemStatus.RUNNING;
+		// use the method to initialize value if necessary
+		return getStatus() == SystemStatus.RUNNING;
 	}
 }
