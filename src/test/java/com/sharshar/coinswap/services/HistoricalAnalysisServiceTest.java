@@ -12,6 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -29,6 +32,9 @@ public class HistoricalAnalysisServiceTest {
 	private TickerService tickerService;
 
 	@Autowired
+	private SimulationRunner simulationRunner;
+
+	@Autowired
 	private MonitorService monitorService;
 
 	@Autowired
@@ -37,21 +43,57 @@ public class HistoricalAnalysisServiceTest {
 	@Test
 	public void simulateHistoricalAnalysis() throws Exception {
 		SwapDescriptor swap = new SwapDescriptor().setCoin1("TUSD").setCoin2("BCD").setBaseCoin("BTC")
-				.setExchange(ScratchConstants.Exchange.BINANCE.getValue()).setCommissionCoin("BNB").setActive(true).setSimulate(true);
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue()).setCommissionCoin("BNB")
+				.setActive(true).setSimulate(true).setMaxPercentVolume(0.09);
 		double stdDev = 0.02;
 		while (stdDev < 0.10) {
 			swap.setDesiredStdDev(stdDev);
-			SimulatorRecord record = historical.simulateHistoricalAnalysis(swap, 86400000L /* 1 day */, 0.15);
+			long checkUpInterval = ScratchConstants.ONE_DAY;
+			double seedMoney = 0.15;
+			long startTime = System.currentTimeMillis();
+			SimulatorRecord record = historical.simulateHistoricalAnalysis(swap, checkUpInterval, seedMoney);
+			long endTime = System.currentTimeMillis();
 			List<SnapshotDescriptor> snapshots = record.getSnapshotDescriptorList();
 			List<TradeAction> actions = record.getTradeActionList();
+			double prevValue = 0;
+			double profit = 0.0;
+			double dailyProfit = 0;
+			int prevDayValue = 0;
+			List<Double> dailyProfits = new ArrayList();
+			Date prevDate = null;
+			Calendar cal = Calendar.getInstance();
 			for (TradeAction ta : actions) {
-				System.out.println(stdDev + " - " + ta.toString());
+				if (ta.getDirection() == SimulatorRecord.TradeDirection.BUY_COIN_1) {
+					if (prevValue > 0.00000001) {
+						profit = ta.getAmountCoin1() - prevValue;
+					} else {
+						profit = ta.getAmountCoin1() - 6500.00;
+					}
+					prevValue = ta.getAmountCoin1();
+					// Get the date
+					cal.setTime(ta.getTradeDate());
+					int taDay = cal.get(Calendar.DAY_OF_MONTH);
+					if (prevDayValue != taDay) {
+						if (prevDate != null) {
+							System.out.println(prevDate + " Daily Profits: " + String.format("%.2f", dailyProfits.get(dailyProfits.size() - 1)));
+						}
+						dailyProfits.add(profit);
+					} else {
+						dailyProfits.set(dailyProfits.size() - 1, dailyProfits.get(dailyProfits.size() - 1) + profit);
+					}
+					System.out.println("Profit: " + String.format("%.2f", profit));
+					prevDayValue = taDay;
+					prevDate = ta.getTradeDate();
+				}
+				System.out.println(stdDev + " - MaxPercVolume " + swap.getMaxPercentVolume() + " - " + ta.toString());
 			}
 			if (!snapshots.isEmpty()) {
 				SnapshotDescriptor descriptor = record.getSnapshotDescriptorList().get(record.getSnapshotDescriptorList().size() - 1);
 				System.out.println("StdDev: " + stdDev + " " + String.format("%.4f", descriptor.getTotalValue()) + " Trades: " + record.getTradeActionList().size());
 			}
 			stdDev += 0.02;
+			historical.saveSimulation(swap, snapshots, checkUpInterval, seedMoney, startTime,
+					endTime, record.getTradeActionList());
 //			if (!snapshots.isEmpty()) {
 //				SnapshotDescriptor descriptor = record.getSnapshotDescriptorList().get(record.getSnapshotDescriptorList().size() - 1);
 //				System.out.println("StdDev: " + stdDev + " " + String.format("%.4f", descriptor.getTotalValue()) + " Trades: " + record.getTradeActionList().size());
@@ -66,7 +108,7 @@ public class HistoricalAnalysisServiceTest {
 	//@Test
 	public void simulateRandom() {
 		tickerService.loadTickers();
-		tickerService.runRandomSimulation();
+		simulationRunner.runRandomSimulation();
 	}
 
 

@@ -18,7 +18,7 @@ import static com.sharshar.coinswap.components.ExchangeCache.Position.*;
 
 /**
  * Used to cache the list of tickers so we don't have to continually go to the database
- *
+ * <p>
  * Created by lsharshar on 3/19/2018.
  */
 
@@ -145,30 +145,34 @@ public class ExchangeCache {
 		return null;
 	}
 
-	private Position updateStats(PriceData currentPd1, PriceData currentPd2, double desiredStdDeviation) {
-		if (priceCache.get(ticker1).size() < cacheSize || priceCache.get(ticker2).size() < cacheSize) {
+	public Position updateStats(PriceData currentPd1, PriceData currentPd2, double desiredStdDeviation) {
+		double stddev = desiredStdDeviation;
+		if (stddev < 0.0000001) {
+			stddev = 1.0;
+		}
+		if (this.priceCache.get(ticker1).size() < this.cacheSize || this.priceCache.get(ticker2).size() < this.cacheSize) {
 			return INSUFFICIENT_DATA;
 		}
-		List<PriceData> pd1List = priceCache.get(ticker1);
-		List<PriceData> pd2List = priceCache.get(ticker2);
-		double currentRatio = currentPd1.getPrice()/currentPd2.getPrice();
+		List<PriceData> pd1List = this.priceCache.get(ticker1);
+		List<PriceData> pd2List = this.priceCache.get(ticker2);
+		double currentRatio = currentPd1.getPrice() / currentPd2.getPrice();
 		List<Double> ratioList = AnalysisUtils.getRatioList(pd1List, pd2List);
-		lastMeanRatio = AnalysisUtils.getMean(ratioList);
-		lastStandardDeviation = AnalysisUtils.getStdDev(ratioList, lastMeanRatio);
-		double valueDistance = desiredStdDeviation * lastStandardDeviation;
-		logger.debug("Mean ratio: " + lastMeanRatio + ", Std Dev: " + lastStandardDeviation);
-		lowRatio = lastMeanRatio - valueDistance;
-		if (lowRatio < 0) {
-			lowRatio = 0;
+		this.lastMeanRatio = AnalysisUtils.getMean(ratioList);
+		this.lastStandardDeviation = AnalysisUtils.getStdDev(ratioList, this.lastMeanRatio);
+		double valueDistance = stddev * this.lastStandardDeviation;
+		logger.debug("Mean ratio: " + lastMeanRatio + ", Std Dev: " + this.lastStandardDeviation);
+		this.lowRatio = this.lastMeanRatio - valueDistance;
+		if (this.lowRatio < 0) {
+			this.lowRatio = 0;
 		}
-		highRatio = lastMeanRatio + valueDistance;
-		logger.debug("Mean ratio: " + lastMeanRatio + ", Std Dev: " + lastStandardDeviation
-				+ ", low value: " + lowRatio + ", high value: " + highRatio);
+		this.highRatio = this.lastMeanRatio + valueDistance;
+		logger.debug("Mean ratio: " + this.lastMeanRatio + ", Std Dev: " + this.lastStandardDeviation
+				+ ", low value: " + this.lowRatio + ", high value: " + this.highRatio);
 		Position position = WITHIN_DESIRED_RATIO;
-		if (currentRatio < lowRatio && lowRatio > 0) {
+		if (currentRatio < this.lowRatio && this.lowRatio > 0) {
 			return BELOW_DESIRED_RATIO;
 		}
-		if (currentRatio > highRatio && highRatio > 0) {
+		if (currentRatio > this.highRatio && this.highRatio > 0) {
 			return ABOVE_DESIRED_RATIO;
 		}
 		return position;
@@ -215,7 +219,7 @@ public class ExchangeCache {
 		// If we are downsizing, remove older data
 		if (newSize < oldData.size()) {
 			int numToRemove = oldData.size() - newSize;
-			for (int i=0; i<numToRemove; i++) {
+			for (int i = 0; i < numToRemove; i++) {
 				oldData.remove(0);
 			}
 		}

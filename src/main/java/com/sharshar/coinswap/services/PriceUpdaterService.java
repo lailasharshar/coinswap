@@ -42,13 +42,17 @@ public class PriceUpdaterService {
 	@Autowired
 	private MasterSettingsService masterSettingsService;
 
-	@Scheduled(fixedRateString = "${timing.updatePrice}", initialDelayString = "${timing.initialDelay}")
-	public void updatePriceData() {
+	@Scheduled(cron = "0 15 * * * *")
+	public void updatePriceDataSchedule() {
 		if (!masterSettingsService.areWeRunning()) {
 			return;
 		}
-		logger.info("Updating price data");
 		List<SwapService.Swap> swaps = swapService.getSwaps();
+		updatePriceData(swaps);
+	}
+
+	public void updatePriceData(List<SwapService.Swap> swaps) {
+		logger.info("Updating price data");
 		Map<ScratchConstants.Exchange, List<PriceData>> priceDataForAllExchanges = getAllPriceDataForAllExchanges(swaps);
 		for (SwapService.Swap swap : swaps) {
 			ScratchConstants.Exchange exchange = swap.getSwapDescriptor().getExchangeObj();
@@ -60,19 +64,22 @@ public class PriceUpdaterService {
 				logger.info("Above desired ration - swapping: " + swap.getSwapDescriptor().getCoin1() + " for " +
 						swap.getSwapDescriptor().getCoin2());
 				action = swap.getSwapExecutor().swapCoin1ToCoin2(exchangeData, swap.getSwapDescriptor().getSimulate());
-			} else {
-				if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
-						position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
-					logger.info("Below desired ration - swapping: " + swap.getSwapDescriptor().getCoin2() + " for " +
-							swap.getSwapDescriptor().getCoin1());
-					action = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, swap.getSwapDescriptor().getSimulate());
-				}
+			} else if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
+					position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
+				logger.info("Below desired ration - swapping: " + swap.getSwapDescriptor().getCoin2() + " for " +
+						swap.getSwapDescriptor().getCoin1());
+				action = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, swap.getSwapDescriptor().getSimulate());
 			}
 			messageService.summarizeTrade(swap, action);
 		}
 	}
 
-	private Map<ScratchConstants.Exchange, List<PriceData>> getAllPriceDataForAllExchanges(List<SwapService.Swap> swaps) {
+	public Map<ScratchConstants.Exchange, List<PriceData>> getAllPriceDataForAllExchanges(List<SwapService.Swap> swaps) {
+		Map<ScratchConstants.Exchange, List<PriceData>> updatedData = new HashMap<>();
+		if (swaps == null) {
+			return updatedData;
+		}
+
 		// Find the unique exchanges we're pulling data from
 		List<ScratchConstants.Exchange> allExchanges = swaps.stream()
 				.map(c -> c.getSwapDescriptor().getExchangeObj()).distinct().collect(Collectors.toList());
@@ -86,7 +93,6 @@ public class PriceUpdaterService {
 		}
 
 		// For each exchange, retrieve the updated price data
-		Map<ScratchConstants.Exchange, List<PriceData>> updatedData = new HashMap<>();
 		for (ScratchConstants.Exchange exchange : allExchanges) {
 			AccountService service = services.get(exchange);
 			List<PriceData> pd = service.getAllPrices();

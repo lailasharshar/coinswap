@@ -32,7 +32,6 @@ public class Ticker {
 	private Double minQty;
 	private Double maxQty;
 	private Double stepSize;
-	private Double lastVolume;
 
 	public Ticker() {}
 

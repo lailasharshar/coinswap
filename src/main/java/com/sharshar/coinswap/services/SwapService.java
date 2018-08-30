@@ -2,6 +2,7 @@ package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.components.SwapExecutor;
+import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.repositories.SwapRepository;
 import com.sharshar.coinswap.repositories.TickerRepository;
 import com.sharshar.coinswap.utils.AccountServiceFinder;
@@ -59,9 +60,6 @@ public class SwapService {
 	}
 
 	@Autowired
-	private AccountServiceFinder accountServiceFactory;
-
-	@Autowired
 	private CacheService cacheService;
 
 	@Autowired
@@ -72,6 +70,9 @@ public class SwapService {
 
 	@Autowired
 	private ApplicationContext applicationContext;
+
+	@Autowired
+	AccountServiceFinder accountServiceFinder;
 
 	@Value("${defaultBaseCurrency}")
 	private String defaultBaseCurrency;
@@ -94,10 +95,21 @@ public class SwapService {
 		for (SwapDescriptor swapDescriptor : swapDescriptors) {
 			Swap swap = createComponent(swapDescriptor);
 			if (swap != null) {
-				swaps.add(new Swap().setSwapDescriptor(swapDescriptor).setSwapExecutor(swap.getSwapExecutor()));
+				swaps.add(swap);
 			}
 		}
 	}
+
+	public void updateVolume() {
+		for (SwapService.Swap swap : getSwaps()) {
+			SwapDescriptor descriptor = swap.getSwapDescriptor();
+			AccountService accountService = accountServiceFinder.getAccountService(descriptor.getExchangeObj());
+			descriptor.setLastVolume1(accountService.get24HourVolume(descriptor.getCoin1() + descriptor.getBaseCoin()));
+			descriptor.setLastVolume2(accountService.get24HourVolume(descriptor.getCoin2() + descriptor.getBaseCoin()));
+			swapRepository.save(descriptor);
+		}
+	}
+
 
 	public void shutdown() {
 		logger.info("Shutting down trade service");
@@ -120,6 +132,9 @@ public class SwapService {
 			}
 		}
 	}
+	public Swap createComponent(SwapDescriptor swapDescriptor) {
+		return createComponent(swapDescriptor, false);
+	}
 
 	/**
 	 * Given a swap db descriptor, create its corresponding executing object.
@@ -127,20 +142,23 @@ public class SwapService {
 	 * @param swapDescriptor - The database object
 	 * @return the object that knows how to execute the swap
 	 */
-	public Swap createComponent(SwapDescriptor swapDescriptor) {
+	public Swap createComponent(SwapDescriptor swapDescriptor, boolean test) {
 		if (!validAddition(swapDescriptor.getExchangeObj(),
-				swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), swapDescriptor.getActive())) {
+				swapDescriptor.getCoin1(), swapDescriptor.getCoin2(), swapDescriptor.getActive(),
+				swapDescriptor.getSimulate(), test)) {
 			return null;
 		}
 		logger.info("Creating component - " + swapDescriptor);
-		SwapExecutor component = applicationContext.getBean(SwapExecutor.class, swapDescriptor,
-				accountServiceFactory.getAccountService(swapDescriptor.getExchangeObj()));
+		AccountService service = accountServiceFinder.getAccountService(swapDescriptor.getExchangeObj());
+		swapDescriptor.setLastVolume1(service.get24HourVolume(swapDescriptor.getCoin1() + swapDescriptor.getBaseCoin()));
+		swapDescriptor.setLastVolume2(service.get24HourVolume(swapDescriptor.getCoin2() + swapDescriptor.getBaseCoin()));
+		SwapExecutor component = applicationContext.getBean(SwapExecutor.class, swapDescriptor, service);
 		Swap swap = new Swap();
 		swap.setSwapDescriptor(swapDescriptor);
 		swap.setSwapExecutor(component);
 		component.setCache(cacheService.createCache(swapDescriptor, tickerRepository.findAll()));
 		component.backFillData();
-		if (swapDescriptor.getActive() != null && swapDescriptor.getActive()) {
+		if (swapDescriptor.getSimulate() != null && swapDescriptor.getSimulate()) {
 			component.seedMeMoney(1.0);
 		}
 		return swap;
@@ -198,7 +216,7 @@ public class SwapService {
 			return match.getSwapDescriptor();
 		}
 		if (!validAddition(swapDescriptor.getExchangeObj(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2(),
-				swapDescriptor.getActive())) {
+				swapDescriptor.getActive(), swapDescriptor.getSimulate())) {
 			return null;
 		}
 		Swap component = createComponent(swapDescriptor);
@@ -251,6 +269,10 @@ public class SwapService {
 				.findFirst().orElse(null);
 	}
 
+	private boolean validAddition(ScratchConstants.Exchange exchange, String coin1, String coin2, Boolean active,
+								  Boolean simulation) {
+		return validAddition(exchange, coin1, coin2, active, simulation, false);
+	}
 	/**
 	 * Do some basic validation that the swap is valid.
 	 * - Does the exchange exist
@@ -264,7 +286,8 @@ public class SwapService {
 	 * @param coin2    - the second coin
 	 * @return if it is a valid addition
 	 */
-	private boolean validAddition(ScratchConstants.Exchange exchange, String coin1, String coin2, Boolean active) {
+	private boolean validAddition(ScratchConstants.Exchange exchange, String coin1, String coin2, Boolean active,
+								  Boolean simulation, boolean test) {
 		if (active == null || !active) {
 			return false;
 		}
@@ -283,8 +306,8 @@ public class SwapService {
 						c.getSwapDescriptor().getCoin2().equalsIgnoreCase(coin2))
 				.collect(Collectors.toList());
 
-		// If there is no overlap, we're valid
-		if (similarOnes == null || similarOnes.isEmpty()) {
+		// If there is no overlap, we're valid - or if we're just doing a simulation
+		if (similarOnes == null || similarOnes.isEmpty() || (simulation != null && simulation) || test) {
 			return true;
 		}
 

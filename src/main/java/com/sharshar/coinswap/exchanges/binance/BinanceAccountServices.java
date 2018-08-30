@@ -9,6 +9,7 @@ import com.binance.api.client.domain.account.*;
 import com.binance.api.client.domain.account.request.AllOrdersRequest;
 import com.binance.api.client.domain.account.request.OrderStatusRequest;
 import com.binance.api.client.domain.general.*;
+import com.binance.api.client.domain.market.OrderBook;
 import com.binance.api.client.domain.market.TickerPrice;
 import com.binance.api.client.domain.market.TickerStatistics;
 import com.sharshar.coinswap.beans.OrderHistory;
@@ -162,10 +163,28 @@ public class BinanceAccountServices implements AccountService {
 		return normalizedBalance;
 	}
 
-	public void buyMarketTest(String ticker, double amount) {
+	public NewOrderResponse buyMarketTest(String ticker, double amount) {
 		NewOrder newOrder = new NewOrder(
 				ticker, OrderSide.BUY, OrderType.MARKET, TimeInForce.GTC, "" + amount);
 		binanceApiRestClient.newOrderTest(newOrder);
+		NewOrderResponse response = new NewOrderResponse();
+		response.setClientOrderId("TESTBUY");
+		response.setOrderId(12345L);
+		response.setSymbol(ticker);
+		response.setTransactTime(10L);
+		return response;
+	}
+
+	public NewOrderResponse sellMarketTest(String ticker, double amount) {
+		NewOrder newOrder = new NewOrder(
+				ticker, OrderSide.SELL, OrderType.MARKET, TimeInForce.GTC, "" + amount);
+		binanceApiRestClient.newOrderTest(newOrder);
+		NewOrderResponse response = new NewOrderResponse();
+		response.setClientOrderId("TESTSELL");
+		response.setOrderId(12346L);
+		response.setSymbol(ticker);
+		response.setTransactTime(11L);
+		return response;
 	}
 
 	public List<OwnedAsset> getBalancesWithValues() {
@@ -236,5 +255,9 @@ public class BinanceAccountServices implements AccountService {
 		return historicalDataPullData.stream().map(c ->
 				new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(c.getOpen()).setTicker(coin + baseCoin).setUpdateTime(c.getTime()))
 				.collect(Collectors.toList());
+	}
+
+	public OrderBook getBookOrders(String ticker) {
+		return binanceApiRestClient.getOrderBook(ticker, 1000);
 	}
 }

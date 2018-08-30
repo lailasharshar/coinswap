@@ -98,6 +98,10 @@ public class SwapExecutor {
 		this.swapDescriptor = swapDescriptor;
 		this.accountService = accountService;
 		this.currentSwapState = CurrentSwapState.OWNS_COIN_1;
+		// This is not a simulation, so load the coin balances
+		if (swapDescriptor != null && (swapDescriptor.getSimulate() != null && !swapDescriptor.getSimulate())) {
+			this.loadBalances();
+		}
 	}
 
 	/**
@@ -173,6 +177,7 @@ public class SwapExecutor {
 			return action;
 		}
 		CoinValues coinValues = getAdjustmentAmounts(coinA, amountCoinAToSell, coinB, cache.getCommissionTicker(), priceData);
+		coinValues = getPenaltyBookPrices(coinValues);
 
 		// If we have nothing to sell :( return
 		if (coinValues.sellCoin < coinA.getMinQty()) {
@@ -192,19 +197,34 @@ public class SwapExecutor {
 
 		SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm");
 		String actionDate = sdf.format(priceData.get(0).getUpdateTime());
-		logger.debug(actionDate + " Sell   : " + coinA.getAssetAndBase() + " " + String.format("%.6f", coinValues.sellCoin)
+		logger.info(actionDate + " Sell   : " + coinA.getAssetAndBase() + " " + String.format("%.6f", coinValues.sellCoin)
 				+ " @ " + String.format("%.6f", coinValues.sellPrice) + " (" + String.format("%.6f", (coinValues.sellCoin * coinValues.sellPrice)) + ")");
-		logger.debug(actionDate + " Buy    : " + coinB.getAssetAndBase() + " " + String.format("%.6f", coinValues.buyCoin)
+		logger.info(actionDate + " Buy    : " + coinB.getAssetAndBase() + " " + String.format("%.6f", coinValues.buyCoin)
 				+ " @ " + String.format("%.6f", coinValues.buyPrice) + " (" + String.format("%.6f", (coinValues.buyCoin * coinValues.buyPrice)) + ")");
-		logger.debug("Amount Coin1: " +  String.format("%.6f", amountCoin1OwnedFree) +
+		logger.info("Amount Coin1: " +  String.format("%.6f", amountCoin1OwnedFree) +
 				", Amount Coin2: " +  String.format("%.6f", amountCoin2OwnedFree) +
 				", Commisison Coin: " +  String.format("%.6f", amountCommissionAssetFree));
 
 		action.setResponseCode(ResponseCode.TRANSACTION_SUCCESSFUL);
 		action.setAmountCoin1(amountCoin1OwnedFree);
 		action.setAmountCoin2(amountCoin2OwnedFree);
+		action.setPriceCoin1(coinValues.sellPrice);
+		action.setPriceCoin2(coinValues.buyPrice);
 		action.setTradeDate(priceData.get(0).getUpdateTime());
 		return action;
+	}
+
+	/**
+	 * In reality, when we sell or buy, we will have to have to receive lower or pay higher amounts
+	 * to fill our order - initial tests assume around 2%
+	 *
+	 * @param coinValues - our initial values
+	 * @return adapted values
+	 */
+	private CoinValues getPenaltyBookPrices(CoinValues coinValues) {
+		coinValues.sellPrice = coinValues.sellPrice - (coinValues.sellPrice * 0.05);
+		coinValues.buyPrice = coinValues.buyPrice * 1.01;
+		return coinValues;
 	}
 
 	/**
@@ -248,6 +268,10 @@ public class SwapExecutor {
 		return cv;
 	}
 
+	private TradeAction coinSwap(double amountCoinAToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
+		return coinSwap(amountCoinAToSell, coinA, coinB, priceData, false);
+	}
+
 	/**
 	 * Perform a coin swap. First it sells the amount specifies. It assumes you take the entire amount of the sold
 	 * proceeds to buy the other coin.
@@ -259,12 +283,11 @@ public class SwapExecutor {
 	 *                          coinB we can buy
 	 * @return the response code to the trade
 	 */
-	private TradeAction coinSwap(double amountCoinAToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
-		System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Live swap !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-		if (true) {
-			// DON'T DO IT UNTIL WE'RE READY
-			return null;
+	private TradeAction coinSwap(double amountCoinAToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData, boolean test) {
+		if (!test) {
+			System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Live swap !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 		}
+
 		TradeAction action = new TradeAction();
 		if (coinB.getAsset().equalsIgnoreCase(swapDescriptor.getBaseCoin()) ||
 				coinA.getAsset().equalsIgnoreCase(swapDescriptor.getBaseCoin())) {
@@ -324,6 +347,8 @@ public class SwapExecutor {
 		action.setResponseCode(ResponseCode.TRANSACTION_SUCCESSFUL);
 		action.setAmountCoin1(amountCoin1OwnedFree);
 		action.setAmountCoin2(amountCoin2OwnedFree);
+		action.setPriceCoin1(coinValues.sellPrice);
+		action.setPriceCoin1(coinValues.buyPrice);
 		action.setTradeDate(priceData.get(0).getUpdateTime());
 		return action;
 	}
@@ -338,7 +363,7 @@ public class SwapExecutor {
 	 * @param maxVolume - the max percent of daily volume we are willing to go up to
 	 * @return the corrected amount
 	 */
-	private double correctedAmount(Ticker coin, double amount, double maxVolume) {
+	private double correctedAmount(Ticker coin, double amount, Double maxVolume) {
 		if (coin.getAsset().equalsIgnoreCase(coin.getBase())) {
 			return amount;
 		}
@@ -364,9 +389,15 @@ public class SwapExecutor {
 	 * @param amountOfVolume - The percentage of volume we are willing to go up to
 	 * @return the amount we can buy/sell based on our volume restrictions
 	 */
-	private double correctForVolume(Ticker coin, double amountToTransact, double amountOfVolume) {
-		Double lastVolume = coin.getLastVolume();
-		if (lastVolume == null || lastVolume == 0) {
+	private double correctForVolume(Ticker coin, double amountToTransact, Double amountOfVolume) {
+		double lastVolume = 0;
+		if (swapDescriptor.getCoin1().equalsIgnoreCase(coin.getAsset())) {
+			lastVolume = swapDescriptor.getLastVolume1();
+		}
+		if (swapDescriptor.getCoin2().equalsIgnoreCase(coin.getAsset())) {
+			lastVolume = swapDescriptor.getLastVolume2();
+		}
+		if (lastVolume == 0) {
 			return amountToTransact;
 		}
 		double maxAmount = amountOfVolume * lastVolume;
@@ -477,7 +508,7 @@ public class SwapExecutor {
 	 *
 	 * @return if it was successfully done
 	 */
-	private boolean loadBalances() {
+	public boolean loadBalances() {
 		List<OwnedAsset> assets = accountService.getAllBalances();
 		if (assets == null) {
 			return false;
@@ -502,7 +533,7 @@ public class SwapExecutor {
 	 * @param priceData             - the price data to do the conversion from the coin to the commission coin
 	 * @return the amount of commission we should need
 	 */
-	private double getCommissionNeeded(Ticker coin, double amountCoin, double defaultTransactionFee,
+	public double getCommissionNeeded(Ticker coin, double amountCoin, double defaultTransactionFee,
 									   List<PriceData> priceData) {
 
 		double priceForCoin = CoinUtils.getPrice(coin.getAssetAndBase(), priceData);
@@ -510,6 +541,7 @@ public class SwapExecutor {
 
 		// Commission in base currency
 		double commission = amountCoin * priceForCoin * defaultTransactionFee;
+		// Commission in commission currency
 		return commission / priceForCommissionCoin;
 	}
 
@@ -520,7 +552,7 @@ public class SwapExecutor {
 	 * @param amountCoinToSell - the amount to sell
 	 * @return the response code to the sell
 	 */
-	private ResponseCode sellCoin(Ticker coin, double amountCoinToSell) {
+	public ResponseCode sellCoin(Ticker coin, double amountCoinToSell) {
 		logger.info("Selling " + amountCoinToSell + " of " + coin.getAssetAndBase());
 		long startTime = System.currentTimeMillis();
 		NewOrderResponse response = accountService.createSellMarketOrder(coin.getAssetAndBase(), amountCoinToSell);
@@ -576,7 +608,7 @@ public class SwapExecutor {
 	 * @param amountToBuy - the amount to buy
 	 * @return the response code of the purchase
 	 */
-	private ResponseCode buyCoin(Ticker coin, double amountToBuy) {
+	public ResponseCode buyCoin(Ticker coin, double amountToBuy) {
 		logger.info("Buying " + amountToBuy + " of " + coin.getAssetAndBase());
 		long startTime = System.currentTimeMillis();
 		NewOrderResponse response = accountService.createBuyMarketOrder(coin.getAssetAndBase(), amountToBuy);
@@ -620,10 +652,11 @@ public class SwapExecutor {
 	 * @param clientId - the client order id
 	 * @return - the order in the completed state or error state
 	 */
-	private Order waitForResponse(String ticker, String clientId) {
+	public Order waitForResponse(String ticker, String clientId) {
 		Order order = accountService.checkOrderStatus(ticker, clientId);
 		OrderStatus status = order.getStatus();
 		while (status == OrderStatus.PARTIALLY_FILLED) {
+			logger.info("Not quite filled");
 			try {
 				Thread.sleep(1000);
 			} catch (Exception ex) {

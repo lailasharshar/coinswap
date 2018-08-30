@@ -1,6 +1,7 @@
 package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.TestCoinswapApplication;
+import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,24 +11,21 @@ import org.springframework.test.context.junit4.SpringRunner;
 import static org.junit.Assert.*;
 
 /**
- * Verifying that we can send emails and texts
+ * Use this to check the format of the sent notifications
  *
  * Created by lsharshar on 8/26/2018.
  */
 @RunWith(SpringRunner.class)
 @SpringBootTest(classes = TestCoinswapApplication.class)
-public class NotificationServiceTest {
+public class MessageServiceTest {
+	@Autowired
+	private MessageService messageService;
 
 	@Autowired
-	private NotificationService notificationService;
+	private BinanceAccountServices binance;
 
 	@Test
-	public void notifyMe() throws Exception {
-		notificationService.notifyMe("Hello", "Hello World");
-	}
-
-	@Test
-	public void textMe() throws Exception {
-		notificationService.textMe("Hello", "Hello World");
+	public void dailyRoundup() throws Exception {
+		messageService.dailyRoundup(binance);
 	}
 }

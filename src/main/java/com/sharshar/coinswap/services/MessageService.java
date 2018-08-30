@@ -14,7 +14,9 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.text.NumberFormat;
 import java.util.List;
+import java.util.Locale;
 
 import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.TRANSACTION_SUCCESSFUL;
 
@@ -30,6 +32,16 @@ public class MessageService {
 
 	@Autowired
 	private NotificationService notificationService;
+
+	public void notifyStatusErrors(String error) {
+		if (error != null && !error.isEmpty()) {
+			try {
+				notificationService.notifyMe("Status Error", error);
+			} catch (Exception ex) {
+				logger.error("Unable to notify me of status error: " + error);
+			}
+		}
+	}
 
 	public void notifyChanges(List<Ticker> addedTickers, List<Ticker> removedTickers) {
 		if ((addedTickers == null || addedTickers.isEmpty())
@@ -83,11 +95,13 @@ public class MessageService {
 			results.append(" = ").append(String.format("%.4f", amountInBtc)).append("<br>");
 			totalAmountOfBtc += amountInBtc;
 		}
+		NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(Locale.US);
 		double totalDollars = CoinUtils.getPrice("BTCUSDT", priceData) * totalAmountOfBtc;
+		String totalDollarsString = currencyFormat.format(totalDollars);
 		results.append("<br>").append("Total: ").append(String.format("%.4f", totalAmountOfBtc))
-				.append(" = ").append(String.format("%.4f", totalDollars)).append("<br>");
+				.append(" = ").append(totalDollarsString).append("<br>");
 		try {
-			notificationService.notifyMe("Daily Roundup", results.toString());
+			notificationService.notifyMe("Daily Roundup: " + totalDollarsString, results.toString());
 		} catch (Exception ex)	{
 			logger.error("Unable to notify me of my daily roundup: " + results.toString(), ex);
 		}

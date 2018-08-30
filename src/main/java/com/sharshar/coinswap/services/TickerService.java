@@ -1,11 +1,9 @@
 package com.sharshar.coinswap.services;
 
-import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.beans.simulation.*;
 import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.repositories.SimulationRunRepository;
-import com.sharshar.coinswap.repositories.SimulationRunSnapshotRepository;
 import com.sharshar.coinswap.repositories.TickerRepository;
 import com.sharshar.coinswap.utils.AccountServiceFinder;
 import com.sharshar.coinswap.utils.ScratchConstants;
@@ -19,8 +17,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Random;
-import java.util.stream.Collectors;
 
 /**
  * Used to manage the list of active currencies on different exchanges. Periodically polls exchanges for all
@@ -30,21 +26,19 @@ import java.util.stream.Collectors;
  */
 @Service
 public class TickerService {
-	private static final long ONE_DAY = 1000L * 60 * 60 * 24;
-
 	private Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private SimulationRunRepository simulationRunRepository;
 
 	@Autowired
-	private SimulationRunSnapshotRepository simulationRunSnapshotRepository;
-
-	@Autowired
 	private HistoricalAnalysisService historicalAnalysisService;
 
 	@Autowired
-	private AccountServiceFinder accountServiceFactory;
+	private AccountServiceFinder accountServiceFinder;
+
+	@Autowired
+	private SwapService swapService;
 
 	@Autowired
 	private TickerRepository tickerRepository;
@@ -63,9 +57,10 @@ public class TickerService {
 	@Value("${commissionAsset}")
 	private String commissionAsset;
 
-	@Scheduled(fixedRateString = "${timing.updateTicker}", initialDelayString = "${timing.initialDelay}")
+	@Scheduled(cron = "0 5 * * * *")
 	public void loadTickers() {
 		reconcileDbListWithExchangeList(ScratchConstants.Exchange.BINANCE);
+		swapService.updateVolume();
 	}
 
 	public List<Ticker> loadTickerListFromDb() {
@@ -78,9 +73,9 @@ public class TickerService {
 	}
 
 	public List<Ticker> getTickersFromExchange(ScratchConstants.Exchange exchange) {
-		AccountService accountService = accountServiceFactory.getAccountService(exchange);
+		AccountService accountService = accountServiceFinder.getAccountService(exchange);
 		// Retrieve the list from exchange
-		logger.info("Loading " + exchange.getExchangeName() + " Binance Tickers");
+		logger.info("Loading " + exchange.getExchangeName() + " Tickers");
 		List<Ticker> tickers = new ArrayList<>();
 		try {
 			tickers = accountService.getTickerDefinitions();
@@ -88,22 +83,21 @@ public class TickerService {
 			logger.error("Unable to reconcileDbListWithExchangeList " + exchange.getExchangeName() + " data", ex);
 			return new ArrayList<>();
 		}
-		for (Ticker ticker : tickers) {
-			ticker.setLastVolume(accountService.get24HourVolume(ticker.getAssetAndBase()));
-		}
 		return tickers;
 	}
 
 	private void reconcileDbListWithExchangeList(ScratchConstants.Exchange exchange) {
-		List<Ticker> tickers = getTickersFromExchange(exchange);
-		logger.info(tickers.size() + " Tickers");
+		List<Ticker> tickersFromExchange = getTickersFromExchange(exchange);
+		logger.info(tickersFromExchange.size() + " Tickers from Exchange");
+		List<Ticker> tickersFromDb = loadTickerListFromDb();
+		logger.info(tickersFromDb.size() + " Tickers from Db");
 
 		List<Ticker> addedTickers = new ArrayList<>();
 
 		// If they already exist, update any data about them, otherwise insert them
 		Date now = new Date();
-		for (Ticker ticker : tickers) {
-			Ticker found = getInList(ticker, loadTickerListFromDb());
+		for (Ticker ticker : tickersFromExchange) {
+			Ticker found = getInList(ticker.getAsset(), ticker.getBase(), ticker.getExchange(), tickersFromDb);
 			if (found == null) {
 				addedTickers.add(ticker);
 				ticker.setFoundDate(now);
@@ -115,14 +109,14 @@ public class TickerService {
 			}
 			ticker.setUpdatedDate(now);
 		}
-		tickerRepository.saveAll(tickers);
+		tickerRepository.saveAll(tickersFromExchange);
 
 		// Find any that weren't in the list and retire them
 		List<Ticker> retiredTickers = new ArrayList<>();
 
 		// Figure out which ones that need to be retired
-		for (Ticker dbTicker : loadTickerListFromDb()) {
-			Ticker found = getInList(dbTicker, tickers);
+		for (Ticker dbTicker : tickersFromDb) {
+			Ticker found = getInList(dbTicker.getAsset(), dbTicker.getBase(), dbTicker.getExchange(), tickersFromExchange);
 			// We didn't find it in the new list, and it hasn't already been retired, retire it
 			if (found == null && dbTicker.getRetired() == null) {
 				retiredTickers.add(dbTicker);
@@ -137,84 +131,19 @@ public class TickerService {
 	/*
 	These methods remove some of the searching from other methods
 	 */
-	private Ticker getInList(Ticker ticker, List<Ticker> tickers) {
-		if (tickers == null || tickers.isEmpty() || ticker == null) {
+	public Ticker getInList(String asset, String base, short exchange, List<Ticker> tickers) {
+		if (tickers == null || tickers.isEmpty() || asset == null || base == null || exchange <= 0) {
 			return null;
 		}
-		return tickers.stream().filter(c -> c.getBase() != null && c.getBase().equalsIgnoreCase(ticker.getBase()))
-				.filter(c -> c.getAsset() != null && c.getAsset().equalsIgnoreCase(ticker.getAsset()))
-				.filter(c -> c.getExchange() == ticker.getExchange()).findFirst().orElse(null);
+		return tickers.stream().filter(c -> c.getBase() != null && c.getBase().equalsIgnoreCase(base))
+				.filter(c -> c.getAsset() != null && c.getAsset().equalsIgnoreCase(asset))
+				.filter(c -> c.getExchange() == exchange).findFirst().orElse(null);
 	}
 
-
-
-	//@Scheduled(fixedRate = 5000)
-	public void runTimedSimulation() {
-		runRandomSimulation();
-	}
-
-	void runRandomSimulation() {
+	public List<Ticker> getTickers() {
 		if (tickerList == null) {
 			loadTickers();
 		}
-		List<Ticker> itemsToUse = tickerList.stream()
-				.filter(c -> c.getBase().equalsIgnoreCase(defaultBaseCurrency))
-				.filter(c -> c.getRetired() == null)
-				.collect(Collectors.toList());
-		int numTickers = itemsToUse.size();
-		Random random = new Random();
-		int selectItem1 = random.nextInt(numTickers);
-		int selectItem2 = random.nextInt(numTickers);
-		while (selectItem2 == selectItem1) {
-			selectItem2 = random.nextInt(numTickers);
-		}
-		double desiredStdDev = (Math.random() * 3);
-		Ticker ticker1 = itemsToUse.get(selectItem1);
-		Ticker ticker2 = itemsToUse.get(selectItem2);
-		SwapDescriptor sd = new SwapDescriptor().setCoin1(ticker1.getAsset()).setCoin2(ticker2.getAsset())
-				.setActive(false).setCommissionCoin(commissionAsset).setDesiredStdDev(desiredStdDev)
-				.setBaseCoin("BTC").setSimulate(true).setMaxPercentVolume(0.1)
-				.setExchange(ScratchConstants.Exchange.BINANCE.getValue());
-		runSimulation(sd, ONE_DAY);
-	}
-
-	private void runSimulation(SwapDescriptor swapDescriptor, long checkUpInterval) {
-		logger.info("Running Simulation: " + swapDescriptor.getCoin1() + "/" + swapDescriptor.getCoin2()
-				+ " - " + String.format("%.4f", swapDescriptor.getDesiredStdDev()));
-		double seedMoney = 1.0;
-		long startTime = System.currentTimeMillis();
-		SimulatorRecord record = historicalAnalysisService.simulateHistoricalAnalysis(swapDescriptor, checkUpInterval, seedMoney);
-		long endTime = System.currentTimeMillis();
-		List<SnapshotDescriptor> snapshots = record.getSnapshotDescriptorList();
-		SimulationRun run = new SimulationRun().setBaseCoin(swapDescriptor.getBaseCoin()).setCoin1(swapDescriptor.getCoin1())
-				.setCoin2(swapDescriptor.getCoin2()).setCommissionCoin(swapDescriptor.getCommissionCoin())
-				.setStartDate(snapshots.get(0).getSnapshotDate())
-				.setEndDate(snapshots.get(snapshots.size() - 1).getSnapshotDate())
-				.setSimulationStartTime(new Date(startTime)).setSimulationEndTime(new Date(endTime))
-				.setSnapshotInterval(checkUpInterval).setStartAmount(seedMoney)
-				.setEndAmount(snapshots.get(snapshots.size() - 1).getTotalValue());
-		RaterResults rater = new RaterResults(snapshots);
-		run.setMeanChange(rater.getMean());
-		run.setStdDev(swapDescriptor.getDesiredStdDev());
-		run.setStdDevChange(rater.getStdDev());
-		try {
-			run = simulationRunRepository.save(run);
-		} catch (Exception ex) {
-			logger.error("Standard Deviation: " + run.getStdDev() + ", end amount: " + run.getEndAmount() +
-					", mean change: " + run.getMeanChange() + ", Standard Deviation Change: " + run.getStdDevChange(), ex);
-			return;
-		}
-		long runId = run.getId();
-		List<SimulationRunSnapshot> simSnaps = new ArrayList<>();
-		for (SnapshotDescriptor snapshotDescriptor : snapshots) {
-			SimulationRunSnapshot snapshot = new SimulationRunSnapshot()
-					.setSnapshotDate(snapshotDescriptor.getSnapshotDate())
-					.setAmountCoin1(snapshotDescriptor.getAmountCoin1())
-					.setAmountCoin2(snapshotDescriptor.getAmountCoin2())
-					.setAmountCommissionCoin(snapshotDescriptor.getAmountCommissionCoin())
-					.setSimulationId(runId);
-			simSnaps.add(snapshot);
-		}
-		simulationRunSnapshotRepository.saveAll(simSnaps);
+		return tickerList;
 	}
 }

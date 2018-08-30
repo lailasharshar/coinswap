@@ -41,4 +41,7 @@ public class ScratchConstants {
 	// The maximum amount of time this service can be down
 	// before the data in the database can't be trusted
 	public static final long MAX_TIME_BEFORE_RELOAD_REQUIRED =  1000L * 30;
+
+	public static final long ONE_DAY = 1000L * 60 * 60 * 24;
+
 }

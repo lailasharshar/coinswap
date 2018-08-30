@@ -30,6 +30,8 @@ public class SwapDescriptor implements Serializable{
 	private Boolean simulate;
 	private double desiredStdDev;
 	private Double maxPercentVolume;
+	private Double lastVolume1;
+	private Double lastVolume2;
 
 	public ScratchConstants.Exchange getExchangeObj() {
 		if (exchange == 0) {

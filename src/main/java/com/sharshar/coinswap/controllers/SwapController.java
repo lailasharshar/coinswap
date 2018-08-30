@@ -64,20 +64,4 @@ public class SwapController {
 	public Iterable<OrderHistory> getOrderHistories() {
 		return orderHistoryService.getAllOrders();
 	}
-
-	@GetMapping("/shutdown")
-	private String shutdown() {
-		swapService.shutdown();
-		return "Shutdown";
-	}
-	@GetMapping("/pause")
-	private String pause() {
-		swapService.pause();
-		return "Pausing";
-	}
-	@GetMapping("/resume")
-	private String resume() {
-		swapService.resume();
-		return "Resuming...";
-	}
 }

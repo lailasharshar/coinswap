@@ -1,13 +1,14 @@
 package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.beans.PriceData;
-import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
+import com.sharshar.coinswap.beans.simulation.*;
 import com.sharshar.coinswap.beans.SwapDescriptor;
-import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.components.ExchangeCache;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.exchanges.Data;
 import com.sharshar.coinswap.exchanges.HistoricalDataPull;
+import com.sharshar.coinswap.repositories.SimulationRunRepository;
+import com.sharshar.coinswap.repositories.TradeActionRepository;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.logging.log4j.LogManager;
@@ -35,6 +36,13 @@ public class HistoricalAnalysisService {
 
 	@Autowired
 	private SwapService swapService;
+
+	@Autowired
+	private TradeActionRepository tradeActionRepository;
+
+	@Autowired
+	private SimulationRunRepository simulationRunRepository;
+
 
 	/**
 	 * Load the price data, clean up and reformat the list and simulate the swap
@@ -115,12 +123,10 @@ public class HistoricalAnalysisService {
 					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
 				TradeAction action = swap.getSwapExecutor().swapCoin1ToCoin2(pdList, swap.getSwapDescriptor().getSimulate());
 				record.addTradeAction(action);
-			} else {
-				if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
-						position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
-					TradeAction action = swap.getSwapExecutor().swapCoin2ToCoin1(pdList, swap.getSwapDescriptor().getSimulate());
-					record.addTradeAction(action);
-				}
+			} else if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
+					position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
+				TradeAction action = swap.getSwapExecutor().swapCoin2ToCoin1(pdList, swap.getSwapDescriptor().getSimulate());
+				record.addTradeAction(action);
 			}
 			if (pdList.get(0).getUpdateTime().getTime() >= intervalExpire) {
 				record.addSnapshot(pdList.get(0).getUpdateTime(), executor.getAmountCoin1OwnedFree(),
@@ -243,7 +249,7 @@ public class HistoricalAnalysisService {
 	 * @param exchange - the exchange to pull the price data from
 	 * @return a list of three lists, each with the price data of each coin
 	 */
-	private List<List<PriceData>> loadPriceData(String coin1, String coin2, String baseCoin,
+	public List<List<PriceData>> loadPriceData(String coin1, String coin2, String baseCoin,
 												String commissionCoin, int numPulled, ScratchConstants.Exchange exchange) {
 		List<List<PriceData>> pd = new ArrayList<>();
 		List<Data> coin1HistoryData;
@@ -315,5 +321,32 @@ public class HistoricalAnalysisService {
 				new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).
 						setPrice(c.getOpen()).setTicker(coin + baseCoin).setUpdateTime(c.getTime()))
 				.collect(Collectors.toList());
+	}
+
+	public void saveSimulation(SwapDescriptor swapDescriptor, List<SnapshotDescriptor> snapshots, long checkUpInterval,
+							   double seedMoney, long startTime, long endTime, List<TradeAction> tradeActions) {
+		SimulationRun run = new SimulationRun().setBaseCoin(swapDescriptor.getBaseCoin()).setCoin1(swapDescriptor.getCoin1())
+				.setCoin2(swapDescriptor.getCoin2()).setCommissionCoin(swapDescriptor.getCommissionCoin())
+				.setStartDate(snapshots.get(0).getSnapshotDate())
+				.setEndDate(snapshots.get(snapshots.size() - 1).getSnapshotDate())
+				.setSimulationStartTime(new Date(startTime)).setSimulationEndTime(new Date(endTime))
+				.setSnapshotInterval(checkUpInterval).setStartAmount(seedMoney)
+				.setEndAmount(snapshots.get(snapshots.size() - 1).getTotalValue());
+		RaterResults rater = new RaterResults(snapshots);
+		run.setMeanChange(rater.getMean());
+		run.setStdDev(swapDescriptor.getDesiredStdDev());
+		run.setStdDevChange(rater.getStdDev());
+		try {
+			run = simulationRunRepository.save(run);
+		} catch (Exception ex) {
+			logger.error("Standard Deviation: " + run.getStdDev() + ", end amount: " + run.getEndAmount() +
+					", mean change: " + run.getMeanChange() + ", Standard Deviation Change: " + run.getStdDevChange(), ex);
+			return;
+		}
+		long runId = run.getId();
+		for (TradeAction action : tradeActions) {
+			action.setSimulationId(runId);
+		}
+		tradeActionRepository.saveAll(tradeActions);
 	}
 }
