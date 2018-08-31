@@ -70,7 +70,9 @@ public class PriceUpdaterService {
 						swap.getSwapDescriptor().getCoin1());
 				action = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, swap.getSwapDescriptor().getSimulate());
 			}
-			messageService.summarizeTrade(swap, action);
+			if (action != null) {
+				messageService.summarizeTrade(swap, action);
+			}
 		}
 	}
 
