@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -98,7 +99,12 @@ public class PriceUpdaterService {
 		for (ScratchConstants.Exchange exchange : allExchanges) {
 			AccountService service = services.get(exchange);
 			List<PriceData> pd = service.getAllPrices();
+			// Add the base prices
 			if (pd != null) {
+				Date updateDate = pd.get(0).getUpdateTime();
+				pd.add(new PriceData().setUpdateTime(updateDate).setExchange(exchange).setPrice(1.0).setTicker("BTCBTC"));
+				pd.add(new PriceData().setUpdateTime(updateDate).setExchange(exchange).setPrice(1.0).setTicker("ETHETH"));
+				pd.add(new PriceData().setUpdateTime(updateDate).setExchange(exchange).setPrice(1.0).setTicker("BNBBNB"));
 				updatedData.put(exchange, pd);
 			}
 		}

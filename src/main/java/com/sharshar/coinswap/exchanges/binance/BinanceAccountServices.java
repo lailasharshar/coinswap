@@ -9,15 +9,12 @@ import com.binance.api.client.domain.account.*;
 import com.binance.api.client.domain.account.request.AllOrdersRequest;
 import com.binance.api.client.domain.account.request.OrderStatusRequest;
 import com.binance.api.client.domain.general.*;
-import com.binance.api.client.domain.market.OrderBook;
-import com.binance.api.client.domain.market.TickerPrice;
-import com.binance.api.client.domain.market.TickerStatistics;
+import com.binance.api.client.domain.market.*;
 import com.sharshar.coinswap.beans.OrderHistory;
 import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.exchanges.AccountService;
-import com.sharshar.coinswap.exchanges.Data;
 import com.sharshar.coinswap.exchanges.HistoricalDataPull;
 import com.sharshar.coinswap.repositories.OrderHistoryRepository;
 import com.sharshar.coinswap.utils.ScratchConstants;
@@ -97,8 +94,22 @@ public class BinanceAccountServices implements AccountService {
 	}
 
 	public Double get24HourVolume(String ticker) {
+		if (isBaseCoin(ticker)) {
+			return 0.0;
+		}
 		TickerStatistics stats = binanceApiRestClient.get24HrPriceStatistics(ticker);
 		return Double.parseDouble(stats.getVolume());
+	}
+
+	public static boolean isBaseCoin(String ticker) {
+		if (ticker.length() % 2 != 0) {
+			return false;
+		}
+		String one = ticker.substring(0, (ticker.length()/2));
+		if ((one + one).equalsIgnoreCase(ticker)) {
+			return true;
+		}
+		return false;
 	}
 
 	public List<PriceData> getAllPrices() {
@@ -245,19 +256,25 @@ public class BinanceAccountServices implements AccountService {
 		return binanceApiRestClient.getAllOrders(request);
 	}
 
-	public List<PriceData> getBackfillData(int cacheSize, String coin, String baseCoin) {
-		List<PriceData> pdList = new ArrayList<>();
-
-		List<Data> historicalDataPullData = historicalDataPull.getData(coin, baseCoin, cacheSize, "Binance");
-		if (historicalDataPullData == null) {
-			return pdList;
-		}
-		return historicalDataPullData.stream().map(c ->
-				new PriceData().setExchange(ScratchConstants.Exchange.BINANCE).setPrice(c.getOpen()).setTicker(coin + baseCoin).setUpdateTime(c.getTime()))
-				.collect(Collectors.toList());
-	}
-
 	public OrderBook getBookOrders(String ticker) {
 		return binanceApiRestClient.getOrderBook(ticker, 1000);
+	}
+
+	public List<PriceData> getBackfillData(int cacheSize, String coin, String baseCoin) {
+		List<Candlestick> klines = binanceApiRestClient.getCandlestickBars(coin + baseCoin, CandlestickInterval.HOURLY);
+		List<PriceData> pd = klines.stream()
+				.map(c -> new PriceData()
+						.setPrice(Double.parseDouble(c.getOpen()))
+						.setTicker(coin + baseCoin)
+						.setUpdateTime(new Date(c.getOpenTime()))
+						.setExchange(ScratchConstants.Exchange.BINANCE))
+				.collect(Collectors.toList());
+		if (pd == null || pd.size() <= cacheSize) {
+			return pd;
+		}
+		while (pd.size() > cacheSize) {
+			pd.remove(0);
+		}
+		return pd;
 	}
 }

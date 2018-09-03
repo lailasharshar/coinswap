@@ -262,19 +262,19 @@ public class HistoricalAnalysisService {
 		if (coin1.equalsIgnoreCase(baseCoin)) {
 			needToFillInArray1 = true;
 		} else {
-			coin1HistoryData = historicalDataPull.getData(coin1, baseCoin, numPulled, null);
+			coin1HistoryData = historicalDataPull.getData(coin1, baseCoin, numPulled, exchange.name());
 			coin1HistoryPd = convertToPriceData(coin1HistoryData, coin1, baseCoin);
 		}
 		boolean needToFillInArray2 = false;
 		if (coin2.equalsIgnoreCase(baseCoin)) {
 			needToFillInArray2 = true;
 		} else {
-			coin2HistoryData = historicalDataPull.getData(coin2, baseCoin, numPulled, null);
+			coin2HistoryData = historicalDataPull.getData(coin2, baseCoin, numPulled, exchange.name());
 			coin2HistoryPd = convertToPriceData(coin2HistoryData, coin2, baseCoin);
 			if (needToFillInArray1) {
 				coin1HistoryPd = generateEmptyList(coin2HistoryData, exchange, baseCoin);
-				pd.add(coin1HistoryPd);
 			}
+			pd.add(coin1HistoryPd);
 		}
 		if (needToFillInArray2) {
 			coin2HistoryPd = generateEmptyList(coin2HistoryData, exchange, baseCoin);
@@ -285,7 +285,6 @@ public class HistoricalAnalysisService {
 			commissionHistoryData = historicalDataPull.getData(commissionCoin, baseCoin, numPulled, null);
 			commissionHistoryPd = convertToPriceData(commissionHistoryData, commissionCoin, baseCoin);
 		}
-		pd.add(coin1HistoryPd);
 		pd.add(coin2HistoryPd);
 		pd.add(commissionHistoryPd);
 		return pd;
@@ -328,14 +327,15 @@ public class HistoricalAnalysisService {
 		SimulationRun run = new SimulationRun().setBaseCoin(swapDescriptor.getBaseCoin()).setCoin1(swapDescriptor.getCoin1())
 				.setCoin2(swapDescriptor.getCoin2()).setCommissionCoin(swapDescriptor.getCommissionCoin())
 				.setStartDate(snapshots.get(0).getSnapshotDate())
+				.setStdDev(swapDescriptor.getDesiredStdDev())
 				.setEndDate(snapshots.get(snapshots.size() - 1).getSnapshotDate())
 				.setSimulationStartTime(new Date(startTime)).setSimulationEndTime(new Date(endTime))
 				.setSnapshotInterval(checkUpInterval).setStartAmount(seedMoney)
 				.setEndAmount(snapshots.get(snapshots.size() - 1).getTotalValue());
 		RaterResults rater = new RaterResults(snapshots);
-		run.setMeanChange(rater.getMean());
-		run.setStdDev(swapDescriptor.getDesiredStdDev());
-		run.setStdDevChange(rater.getStdDev());
+		//run.setMeanChange(rater.getMean());
+		//run.setStdDev(swapDescriptor.getDesiredStdDev());
+		//run.setStdDevChange(rater.getStdDev());
 		try {
 			run = simulationRunRepository.save(run);
 		} catch (Exception ex) {

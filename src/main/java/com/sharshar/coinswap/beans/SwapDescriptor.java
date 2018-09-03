@@ -39,4 +39,19 @@ public class SwapDescriptor implements Serializable{
 		}
 		return ScratchConstants.Exchange.valueOf(exchange);
 	}
+
+	/**
+	 * Returns true if one of the coins is the base coin.
+	 *
+	 * @return true if coin1 or coin2 is the base coin, false otherwise (including error conditions)
+	 */
+	public boolean hasBaseCoin() {
+		if (coin1 == null || baseCoin == null || coin2 == null) {
+			return false;
+		}
+		if (coin1.equalsIgnoreCase(baseCoin) || coin2.equalsIgnoreCase(baseCoin)) {
+			return true;
+		}
+		return false;
+	}
 }

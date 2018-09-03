@@ -73,6 +73,7 @@ public class MonitorService {
 			status += "Binance error: " + ex.getMessage() + "\n";
 		}
 		// Check to see if we have access to CryptoCompare
+		/*
 		try {
 			List<List<PriceData>> data = historicalAnalysisService.loadPriceData(
 					"TUSD", "BTC", "BTC", "BNB", 10, ScratchConstants.Exchange.BINANCE);
@@ -82,6 +83,7 @@ public class MonitorService {
 		} catch (Exception ex) {
 			status += "CryptoCompare error: " + ex.getMessage() + "\n";
 		}
+		*/
 		if (status.length() > 0) {
 			messageService.notifyStatusErrors(status);
 			return status;

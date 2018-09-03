@@ -9,6 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 /**
  * Created by lsharshar on 8/27/2018.
  */
@@ -102,5 +105,11 @@ public class Misc {
 		System.out.println("Current Price: " + String.format("%.6f", currentPrice));
 		double percentDecrease = (maxPrice - minPrice) / minPrice * 100;
 		System.out.println("Percent Increase: " + String.format("%.6f", percentDecrease));
+	}
+
+	@Test
+	public void testBaseCoin() {
+		assertEquals(services.get24HourVolume("BTCBTC"), 0.0, 0.00000001);
+		assertTrue(services.get24HourVolume("ETHBTC") > 0.00000001);
 	}
 }

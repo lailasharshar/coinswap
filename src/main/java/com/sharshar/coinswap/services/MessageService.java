@@ -127,7 +127,7 @@ public class MessageService {
 			return null;
 		}
 		StringBuilder s = new StringBuilder();
-		s.append("Response Code: ").append(action.getResponseCode()).append("\n");
+		s.append("Response Code: ").append(action.getResponseCode()).append("<br>");
 		switch (action.getResponseCode()) {
 			// Poorly formed
 
@@ -136,7 +136,7 @@ public class MessageService {
 			case NO_BASE_COIN_DEFINED:
 			case NO_COMMISSION_COIN_DEFINED:
 			case NO_SWAP_DEFINITION_DEFINED:
-				s.append("Swap poorly defined\n");
+				s.append("Swap poorly defined<br>");
 				break;
 
 			// The incomplete
@@ -147,7 +147,7 @@ public class MessageService {
 			case BUY_ORDER_NEW:
 			case BUY_ORDER_FILLED:
 			case BUY_ORDER_PARTIAL_FILLED:
-				s.append("Order Incomplete\n");
+				s.append("Order Incomplete<br>");
 				break;
 
 			// The errors
@@ -162,11 +162,11 @@ public class MessageService {
 			case SELL_ORDER_ERROR:
 			case BUY_ORDER_ERROR:
 			case UNABLE_TO_UPDATE_COIN_BALANCES:
-				s.append("Error Occurred\n");
+				s.append("Error Occurred<br>");
 				break;
 
 			case NOT_ENOUGH_COMMISSION_CURRENCY:
-				s.append("Not enough commission currency\n");
+				s.append("Not enough commission currency<br>");
 				break;
 		}
 
@@ -177,38 +177,38 @@ public class MessageService {
 		SwapExecutor executor = swap.getSwapExecutor();
 		ExchangeCache cache = executor.getCache();
 		SwapDescriptor descriptor = swap.getSwapDescriptor();
-		s.append("Setup:").append("-------------\n");
-		s.append("Desired Std Deviation: ").append(descriptor.getDesiredStdDev()).append("\n");
-		s.append("Max ").append(descriptor.getCoin1()).append(" to buy: ").append(cache.getTicker1().getMaxQty()).append("\n");
-		s.append("Max ").append(descriptor.getCoin2()).append(" to buy: ").append(cache.getTicker2().getMaxQty()).append("\n");
+		s.append("Setup:<br><hr><br>");
+		s.append("Desired Std Deviation: ").append(descriptor.getDesiredStdDev()).append("<br>");
+		s.append("Max ").append(descriptor.getCoin1()).append(" to buy: ").append(String.format("%.6f", cache.getTicker1().getMaxQty())).append("<br>");
+		s.append("Max ").append(descriptor.getCoin2()).append(" to buy: ").append(String.format("%.6f", cache.getTicker2().getMaxQty())).append("<br>");
 
-		s.append("\nCurrent Status (as of ").append(cache.getLatestUpdate()).append("):").append("-------------\n");
+		s.append("<br>Current Status (as of ").append(cache.getLatestUpdate()).append("):").append("<br><hr><br>");
 
 		double lastPrice1 = cache.getLastPriceData(descriptor.getCoin1() + descriptor.getBaseCoin()).getPrice();
 		double amountBtc1 = executor.getAmountCoin1OwnedFree() * lastPrice1;
-		s.append("Current status: ").append(executor.getCurrentSwapState()).append("\n");
-		s.append(cache.getTicker1()).append(" Owns: ")
+		s.append("Current status: ").append(executor.getCurrentSwapState()).append("<br>");
+		s.append(descriptor.getCoin1()).append(" Owns: ")
 				.append(String.format("%.6f", executor.getAmountCoin1OwnedFree())) .append(" @ ")
 				.append(String.format("%.6f", lastPrice1)) .append(" = ")
-				.append(String.format("%.6f", amountBtc1)) .append("\n");
+				.append(String.format("%.6f", amountBtc1)) .append("<br>");
 		double lastPrice2 = cache.getLastPriceData(descriptor.getCoin2() + descriptor.getBaseCoin()).getPrice();
-		double amountBtc2 = executor.getAmountCoin1OwnedFree() * lastPrice2;
-		s.append(cache.getTicker2()).append(" Owns: ")
+		double amountBtc2 = executor.getAmountCoin2OwnedFree() * lastPrice2;
+		s.append(descriptor.getCoin2()).append(" Owns: ")
 				.append(String.format("%.6f", executor.getAmountCoin2OwnedFree())) .append(" @ ")
 				.append(String.format("%.6f", lastPrice2)) .append(" = ")
-				.append(String.format("%.6f", amountBtc2)) .append("\n");
+				.append(String.format("%.6f", amountBtc2)) .append("<br>");
 
 		double lastCommissionPrice = cache.getLastPriceData(descriptor.getCommissionCoin() + descriptor.getBaseCoin()).getPrice();
 		double amountBtcCommission = executor.getAmountCoin1OwnedFree() * lastCommissionPrice;
 		s.append(descriptor.getCommissionCoin()).append(" Owns: ")
 				.append(String.format("%.6f", executor.getAmountCommissionAssetFree())) .append(" @ ")
 				.append(String.format("%.6f", lastCommissionPrice)) .append(" = ")
-				.append(String.format("%.6f", amountBtcCommission)) .append("\n");
+				.append(String.format("%.6f", amountBtcCommission)) .append("<br>");
 
-		s.append("Last Mean Ratio: ").append(String.format("%.6f", cache.getLastMeanRatio())).append("\n");
-		s.append("Last Std Dev: ").append(String.format("%.6f", cache.getLastStandardDeviation())).append("\n");
-		s.append("Last High Ratio: ").append(String.format("%.6f", cache.getHighRatio())).append("\n");
-		s.append("Last Low Ratio: ").append(String.format("%.6f", cache.getLowRatio())).append("\n");
+		s.append("Last Mean Ratio: ").append(String.format("%.6f", cache.getLastMeanRatio())).append("<br>");
+		s.append("Last Std Dev: ").append(String.format("%.6f", cache.getLastStandardDeviation())).append("<br>");
+		s.append("Last High Ratio: ").append(String.format("%.6f", cache.getHighRatio())).append("<br>");
+		s.append("Last Low Ratio: ").append(String.format("%.6f", cache.getLowRatio())).append("<br>");
 
 		return s.toString();
 	}

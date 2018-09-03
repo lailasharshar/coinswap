@@ -51,6 +51,10 @@ public class ExchangeCache {
 	private Map<Ticker, List<PriceData>> priceCache;
 
 	private Ticker loadTicker(String coin, String baseCoin, short exchangeVal) {
+		if (coin.equalsIgnoreCase(baseCoin)) {
+			return new Ticker().setUpdatedDate(new Date()).setFoundDate(new Date()).setAsset(coin).setBase(baseCoin)
+			.setExchange(exchangeVal).setMinQty(0.0).setMaxQty(0.0).setStepSize(0.0);
+		}
 		if (allTickers == null) {
 			return null;
 		}

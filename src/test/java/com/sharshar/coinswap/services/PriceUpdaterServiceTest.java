@@ -4,6 +4,7 @@ import com.sharshar.coinswap.TestCoinswapApplication;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.components.SwapExecutor;
+import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -30,6 +31,9 @@ public class PriceUpdaterServiceTest {
 
 	@Autowired
 	private PriceUpdaterService priceUpdaterService;
+
+	@Autowired
+	private BinanceAccountServices binance;
 
 	@Test
 	public void getAllPriceDataForAllExchanges() throws Exception {
@@ -60,4 +64,11 @@ public class PriceUpdaterServiceTest {
 		assertTrue(data.size() > 0);
 	}
 
+	@Test
+	public void getHistoricalData() {
+		//List<PriceData> priceData = binance.getBackfillData(200, "BCD", "BTC");
+		//priceData.forEach(c -> System.out.println(String.format("%.6f", c.getPrice())));
+		List<PriceData> priceData = binance.getBackfillData(1000, "BCD", "BTC");
+		priceData.forEach(c -> System.out.println(String.format("%.6f", c.getPrice()) + " " + c.getUpdateTime()));
+	}
 }

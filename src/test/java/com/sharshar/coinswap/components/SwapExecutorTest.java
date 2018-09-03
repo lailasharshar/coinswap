@@ -164,6 +164,36 @@ public class SwapExecutorTest {
 
 	/* ACTUALLY BUYS/SELLS COINS */
 	//@Test
+	public void swapCoinsBtc() {
+		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
+				.setCoin1("BTC").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(0.08)
+				.setCommissionCoin("BNB").setDesiredStdDev(4.0);
+		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
+		SwapExecutor executor = swap.getSwapExecutor();
+		List<PriceData> pd = binance.getAllPrices();
+		TradeAction ta = executor.coinSwap(0.0001, executor.getCache().getTicker1(),
+				executor.getCache().getTicker2(), pd, false);
+
+	}
+
+	/* ACTUALLY BUYS/SELLS COINS */
+	//@Test
+	public void swapCoinsBtc2() {
+		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
+				.setCoin1("BTC").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(0.08)
+				.setCommissionCoin("BNB").setDesiredStdDev(4.0);
+		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
+		SwapExecutor executor = swap.getSwapExecutor();
+		List<PriceData> pd = binance.getAllPrices();
+		TradeAction ta = executor.coinSwap(0.1, executor.getCache().getTicker2(),
+				executor.getCache().getTicker1(), pd, false);
+
+	}
+
+	/* ACTUALLY BUYS/SELLS COINS */
+	//@Test
 	public void buyCoin2() {
 		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
 				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
