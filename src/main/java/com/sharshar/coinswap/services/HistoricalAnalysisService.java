@@ -119,11 +119,11 @@ public class HistoricalAnalysisService {
 				executor.seedMeMoney(seedMoney);
 				seeded = true;
 			}
-			if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_1 &&
+			if (swap.getSwapExecutor().getCurrentSwapState() == ScratchConstants.CurrentSwapState.OWNS_COIN_1 &&
 					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
 				TradeAction action = swap.getSwapExecutor().swapCoin1ToCoin2(pdList, swap.getSwapDescriptor().getSimulate());
 				record.addTradeAction(action);
-			} else if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
+			} else if (swap.getSwapExecutor().getCurrentSwapState() == ScratchConstants.CurrentSwapState.OWNS_COIN_2 &&
 					position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
 				TradeAction action = swap.getSwapExecutor().swapCoin2ToCoin1(pdList, swap.getSwapDescriptor().getSimulate());
 				record.addTradeAction(action);

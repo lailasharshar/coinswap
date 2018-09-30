@@ -28,7 +28,7 @@ public class SwapController {
 
 	@PostMapping("/swaps")
 	public SwapDescriptor addSwapComponent(@RequestBody SwapDescriptor swap) {
-		return swapService.addComponement(swap);
+		return swapService.addComponent(swap);
 	}
 
 	@DeleteMapping("/swaps")

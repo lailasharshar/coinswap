@@ -11,9 +11,12 @@ import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.exchanges.AccountService;
+import com.sharshar.coinswap.services.SwapService;
 import com.sharshar.coinswap.utils.CoinUtils;
+import com.sharshar.coinswap.utils.ScratchConstants;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +26,9 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.BUY_ORDER_FILLED;
+import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.SELL_ORDER_FILLED;
+
 /**
  * Encapsulates a coin swap service. This enables to instantiate more than one in this process
  * <p>
@@ -31,14 +37,6 @@ import java.util.List;
 @Component
 @Scope("prototype")
 public class SwapExecutor {
-	private Logger logger = LogManager.getLogger();
-
-	public SwapExecutor setCache(ExchangeCache cache) {
-		this.cache = cache;
-		return this;
-	}
-
-	private ExchangeCache cache;
 
 	private class CoinValues {
 		double sellCoin;
@@ -79,30 +77,64 @@ public class SwapExecutor {
 		COIN_IS_BASECOIN, OUT_OF_MONEY_COIN2
 	}
 
-	public enum CurrentSwapState {
-		OWNS_COIN_1,
-		OWNS_COIN_2,
-		OWNS_NOTHING
-	}
+	private Logger logger = LogManager.getLogger();
 
+	@Autowired
+	private SwapService swapService;
+
+	private ExchangeCache cache;
 	private SwapDescriptor swapDescriptor;
-
-	private CurrentSwapState currentSwapState;
 	private double amountCoin1OwnedFree;
 	private double amountCoin2OwnedFree;
 	private double amountBaseCoinOwnedFree;
 	private double amountCommissionAssetFree;
+	private boolean inSwap;
+	private double amountExecuted;
+	private double amountSelling;
+	private double amountBuying;
 
 	private AccountService accountService;
 
 	public SwapExecutor(SwapDescriptor swapDescriptor, AccountService accountService) {
 		this.swapDescriptor = swapDescriptor;
 		this.accountService = accountService;
-		this.currentSwapState = CurrentSwapState.OWNS_COIN_2;
 		// This is not a simulation, so load the coin balances
 		if (swapDescriptor != null && (swapDescriptor.getSimulate() != null && !swapDescriptor.getSimulate())) {
 			this.loadBalances();
 		}
+	}
+
+	public double getAmountExecuted() {
+		return amountExecuted;
+	}
+
+	public double getAmountSelling() {
+		return amountSelling;
+	}
+
+	public double getAmountBuying() {
+		return amountBuying;
+	}
+
+	public SwapDescriptor getSwapDescriptor() {
+		return SwapDescriptor.clone(swapDescriptor);
+	}
+
+	public SwapExecutor setCache(ExchangeCache cache) {
+		this.cache = cache;
+		return this;
+	}
+
+	public boolean isInSwap() {
+		return inSwap;
+	}
+
+	public boolean isSimulate() {
+		// default to true
+		if (swapDescriptor == null || swapDescriptor.getSimulate() == null) {
+			return true;
+		}
+		return swapDescriptor.getSimulate();
 	}
 
 	public List<PriceData> getBaseData(List<PriceData> sourceData, String baseCoin) {
@@ -175,6 +207,7 @@ public class SwapExecutor {
 			amountCoin2OwnedFree += amount;
 		}
 	}
+
 	private TradeAction doBaseTrade(double amountCoinToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
 		TradeAction action = new TradeAction();
 		double transFee = accountService.getDefaultTransactionFee();
@@ -195,7 +228,7 @@ public class SwapExecutor {
 				action.setResponseCode(ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY);
 				return action;
 			}
-			ResponseCode buyResponse = buyCoin(coinB, coinToBuyAmount);
+			ResponseCode buyResponse = breakUpAndBuyCoin(coinB, buyPrice, coinToBuyAmount);
 			if (buyResponse == ResponseCode.BUY_ORDER_FILLED) {
 				logger.info("Buy order filled for: " + coinB.getAssetAndBase());
 			} else {
@@ -218,7 +251,7 @@ public class SwapExecutor {
 				action.setResponseCode(ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY);
 				return action;
 			}
-			ResponseCode sellResponse = sellCoin(coinA, coinToSellAmount);
+			ResponseCode sellResponse = breakUpAndSellCoin(coinA, sellPrice, coinToSellAmount);
 			if (sellResponse == ResponseCode.SELL_ORDER_FILLED) {
 				logger.info("Sell order filled for: " + coinA.getAssetAndBase());
 			} else {
@@ -571,18 +604,27 @@ public class SwapExecutor {
 	 * @return the response code
 	 */
 	public TradeAction swapCoin1ToCoin2(List<PriceData> priceData, boolean simulate) {
+		inSwap = true;
 		TradeAction action;
-		if (simulate) {
-			action = simulateCoinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
-			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_2);
-		} else {
-			action = coinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
-			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_2);
+		try {
+			if (simulate) {
+				action = simulateCoinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
+				action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_2);
+			} else {
+				action = coinSwap(amountCoin1OwnedFree, cache.getTicker1(), cache.getTicker2(), priceData);
+				action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_2);
+			}
+			if (action.getResponseCode() == ResponseCode.TRANSACTION_SUCCESSFUL) {
+				swapService.updateCoinOwned(swapDescriptor, ScratchConstants.CurrentSwapState.OWNS_COIN_2);
+			}
+			inSwap = false;
+			return action;
+		} catch (Exception ex) {
+			// We just want to make sure we are not constantly "in the swap" status if we error out
+			logger.error(ex.getMessage());
+			inSwap = false;
+			throw ex;
 		}
-		if (action.getResponseCode() == ResponseCode.TRANSACTION_SUCCESSFUL) {
-			currentSwapState = CurrentSwapState.OWNS_COIN_2;
-		}
-		return action;
 	}
 
 	/**
@@ -593,18 +635,27 @@ public class SwapExecutor {
 	 * @return the response code
 	 */
 	public TradeAction swapCoin2ToCoin1(List<PriceData> priceData, boolean simulate) {
+		inSwap = true;
 		TradeAction action;
-		if (simulate) {
-			action = simulateCoinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
-			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_1);
-		} else {
-			action = coinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
-			action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_1);
+		try {
+			if (simulate) {
+				action = simulateCoinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
+				action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_1);
+			} else {
+				action = coinSwap(amountCoin2OwnedFree, cache.getTicker2(), cache.getTicker1(), priceData);
+				action.setDirection(SimulatorRecord.TradeDirection.BUY_COIN_1);
+			}
+			if (action.getResponseCode() == ResponseCode.TRANSACTION_SUCCESSFUL) {
+				swapService.updateCoinOwned(swapDescriptor, ScratchConstants.CurrentSwapState.OWNS_COIN_1);
+			}
+			inSwap = false;
+			return action;
+		} catch (Exception ex) {
+			// We just want to make sure we are not constantly "in the swap" status if we error out
+			inSwap = false;
+			logger.error(ex.getMessage());
+			throw ex;
 		}
-		if (action.getResponseCode() == ResponseCode.TRANSACTION_SUCCESSFUL) {
-			currentSwapState = CurrentSwapState.OWNS_COIN_1;
-		}
-		return action;
 	}
 
 	/**
@@ -724,6 +775,87 @@ public class SwapExecutor {
 	}
 
 	/**
+	 * Because we can't buy fast enough for the current market price, let's find reasonable amounts to
+	 * buy at a time. The account service has a price in the base coin. For example, if 0.03 BTC is reasonable,
+	 * the price of the coin is 0.001 of BTC, then the amount to buy should not be more than 3.
+	 *
+	 * @param stepSize - The minimum increment to buy/sell in.
+	 * @param price - the price relative to the base coin
+	 * @param totalAmountToBuy - the total amount you want to buy
+	 * @return the list of broken up pieces
+	 */
+	public List<Double> breakItUp(double stepSize, double price, double totalAmountToBuy) {
+		List<Double> amounts = new ArrayList<>();
+		if (stepSize == 0 || totalAmountToBuy == 0) {
+			return amounts;
+		}
+		double reasonableAmountAtTime = correctForStep(stepSize, accountService.getMaxAmountAtTime()/price);
+		if (reasonableAmountAtTime > totalAmountToBuy) {
+			amounts.add(totalAmountToBuy);
+			return amounts;
+		}
+		double amountLeft = totalAmountToBuy;
+		while (amountLeft > 0) {
+			double prevAmount = amountLeft;
+			amountLeft -= reasonableAmountAtTime;
+			if (amountLeft < 0) {
+				if ((prevAmount / reasonableAmountAtTime) < 0.1){
+					amounts.set(amounts.size() - 1, amounts.get(amounts.size() - 1) + prevAmount);
+				} else {
+					amounts.add(prevAmount);
+				}
+			} else {
+				amounts.add(reasonableAmountAtTime);
+			}
+		}
+		return amounts;
+	}
+
+	public ResponseCode breakUpAndSellCoin(Ticker ticker, Double price, double totalAmountToSell) {
+		List<Double> itemsBrokenUp = breakItUp(ticker.getStepSize(), price, totalAmountToSell);
+		logger.info("Selling: " + String.format("%.4f", totalAmountToSell) + " in " + itemsBrokenUp.size() + " chunks");
+		this.amountExecuted = 0;
+		this.amountSelling = totalAmountToSell;
+		ResponseCode errorCode = null;
+		for (double amt : itemsBrokenUp) {
+			ResponseCode responseCode = sellCoin(ticker, amt);
+			if (responseCode != SELL_ORDER_FILLED) {
+				errorCode = responseCode;
+			} else {
+				this.amountExecuted += amt;
+			}
+		}
+		if (errorCode != null) {
+			return errorCode;
+		}
+		amountExecuted = 0;
+		this.amountSelling = 0;
+		return SELL_ORDER_FILLED;
+	}
+
+	public ResponseCode breakUpAndBuyCoin(Ticker ticker, Double price, double totalAmountToBuy) {
+		List<Double> itemsBrokenUp = breakItUp(ticker.getStepSize(), price, totalAmountToBuy);
+		logger.info("Buying: " + String.format("%.4f", totalAmountToBuy) + " in " + itemsBrokenUp.size() + " chunks");
+		ResponseCode errorCode = null;
+		this.amountExecuted = 0;
+		this.amountBuying = totalAmountToBuy;
+		for (double amt : itemsBrokenUp) {
+			ResponseCode responseCode = buyCoin(ticker, amt);
+			if (responseCode != BUY_ORDER_FILLED) {
+				errorCode = responseCode;
+			} else {
+				this.amountExecuted += amt;
+			}
+		}
+		if (errorCode != null) {
+			return errorCode;
+		}
+		this.amountExecuted = 0;
+		this.amountBuying = 0;
+		return BUY_ORDER_FILLED;
+	}
+
+	/**
 	 * Purchase the coin from the exchange
 	 *
 	 * @param coin        - the coin to buy
@@ -806,8 +938,8 @@ public class SwapExecutor {
 		return amountCommissionAssetFree;
 	}
 
-	public CurrentSwapState getCurrentSwapState() {
-		return currentSwapState;
+	public ScratchConstants.CurrentSwapState getCurrentSwapState() {
+		return swapDescriptor.getCurrentSwapState();
 	}
 
 	public ExchangeCache getCache() {
@@ -826,33 +958,7 @@ public class SwapExecutor {
 		// Load balances
 		this.loadBalances();
 
-		// Determine which coin we currently own of the two swapped items
-		currentSwapState = findOutCurrentState();
-
 		// Clear out the cache
 		cache.clear();
-	}
-
-	private CurrentSwapState findOutCurrentState() {
-		// If we don't own anything, return owns nothing
-		if (amountCoin1OwnedFree == 0 && amountCoin2OwnedFree == 0) {
-			return CurrentSwapState.OWNS_NOTHING;
-		}
-		// If one value is 0 and the other one isn't, we own the other one.
-		if (amountCoin1OwnedFree == 0 && amountCoin2OwnedFree > 0) {
-			return CurrentSwapState.OWNS_COIN_2;
-		}
-		if (amountCoin2OwnedFree == 0 && amountCoin1OwnedFree > 0) {
-			return CurrentSwapState.OWNS_COIN_1;
-		}
-		// If it's less obvious, choose the one with the largest value in base coin
-		PriceData pd1 = cache.getLastPriceData(swapDescriptor.getCoin1() + swapDescriptor.getBaseCoin());
-		PriceData pd2 = cache.getLastPriceData(swapDescriptor.getCoin2() + swapDescriptor.getBaseCoin());
-		double amt1 = pd1.getPrice() * amountCoin1OwnedFree;
-		double amt2 = pd2.getPrice() * amountCoin2OwnedFree;
-		if (amt1 > amt2) {
-			return CurrentSwapState.OWNS_COIN_1;
-		}
-		return CurrentSwapState.OWNS_COIN_2;
 	}
 }

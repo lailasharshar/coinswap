@@ -5,6 +5,7 @@ import com.binance.api.client.domain.account.Order;
 import com.sharshar.coinswap.TestCoinswapApplication;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import com.sharshar.coinswap.services.SwapService;
@@ -47,6 +48,41 @@ public class SwapExecutorTest {
 	}
 
 	@Test
+	public void breakItUp() {
+		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
+				.setCoin1("WTC").setCoin2("SALT").setSimulate(true).setBaseCoin("BTC").setMaxPercentVolume(0.15)
+				.setCommissionCoin("BNB").setDesiredStdDev(1.0);
+
+		// Bootstrap the exchange, cache
+		SwapService.Swap swap = swapService.createComponent(swapDescriptor);
+		SwapExecutor executor = swap.getSwapExecutor();
+		{
+			List<Double> amounts = executor.breakItUp(0.01, 0.001, 91);
+			assertNotNull(amounts);
+			assertEquals(amounts.size(), 3);
+			assertEquals(amounts.get(0), 30.0, 0.0000001);
+			assertEquals(amounts.get(1), 30.0, 0.0000001);
+			assertEquals(amounts.get(2), 31.0, 0.0000001);
+		}
+
+		{
+			List<Double> amounts2 = executor.breakItUp(0.01, 0.001, 20);
+			assertEquals(amounts2.size(), 1);
+			assertEquals(amounts2.get(0), 20.0, 0.0000001);
+		}
+
+		{
+			double amtToBuy = 120.45;
+			List<Double> amounts3 = executor.breakItUp(0.01, 0.002234234234, amtToBuy);
+			double total = amounts3.stream().mapToDouble(c -> c).sum();
+			assertEquals(amtToBuy, total, 0.0000001);
+			//assertEquals(amounts3.size(), 1);
+			//assertEquals(amounts3.get(0), 20.0, 0.0000001);
+		}
+	}
+
+	@Test
 	public void testBasicStuff() {
 		// Create a swap definition
 		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
@@ -57,7 +93,7 @@ public class SwapExecutorTest {
 		// Bootstrap the exchange, cache
 		SwapService.Swap swap = swapService.createComponent(swapDescriptor);
 		SwapExecutor executor = swap.getSwapExecutor();
-		assertEquals(executor.getCurrentSwapState(), SwapExecutor.CurrentSwapState.OWNS_COIN_1);
+		assertEquals(executor.getCurrentSwapState(), ScratchConstants.CurrentSwapState.OWNS_COIN_1);
 		assertEquals(swapDescriptor.getBaseCoin(), "BTC");
 		assertTrue(executor.getAmountCoin1OwnedFree() > 0);
 		System.out.println("Amount " + executor.getCache().getTicker1().getAssetAndBase() + " = " + executor.getAmountCoin1OwnedFree());

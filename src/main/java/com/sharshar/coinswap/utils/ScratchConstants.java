@@ -44,4 +44,9 @@ public class ScratchConstants {
 
 	public static final long ONE_DAY = 1000L * 60 * 60 * 24;
 
+	public enum CurrentSwapState {
+		OWNS_COIN_1,
+		OWNS_COIN_2,
+		OWNS_NOTHING
+	}
 }

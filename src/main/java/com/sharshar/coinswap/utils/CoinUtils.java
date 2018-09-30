@@ -72,4 +72,9 @@ public class CoinUtils {
 		}
 		return pd.getPrice();
 	}
+
+	public static double getAmountOfCoinBFromCoinA(double amtCoinA, double priceCoinA, double priceCoinB) {
+		double amountInBase = amtCoinA * priceCoinA;
+		return amountInBase / priceCoinB;
+	}
 }

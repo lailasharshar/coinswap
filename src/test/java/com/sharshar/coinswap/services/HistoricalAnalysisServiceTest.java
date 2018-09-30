@@ -73,7 +73,7 @@ public class HistoricalAnalysisServiceTest {
 
 	@Test
 	public void simulateHistoricalWithBTC() throws Exception {
-		double stdDev = 0.5;
+		double stdDev = 0.3;
 		//while (stdDev < 2.00) {
 			try {
 				runSimulation("BTC", "BCD", 0.05, stdDev);

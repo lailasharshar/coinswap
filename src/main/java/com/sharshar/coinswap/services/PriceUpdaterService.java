@@ -1,9 +1,9 @@
 package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.beans.PriceData;
-import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.components.ExchangeCache;
-import com.sharshar.coinswap.components.SwapExecutor;
+import com.sharshar.coinswap.components.SwapExecutorThread;
+import com.sharshar.coinswap.config.ThreadPool;
 import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.utils.AccountServiceFinder;
 import com.sharshar.coinswap.utils.ScratchConstants;
@@ -43,6 +43,9 @@ public class PriceUpdaterService {
 	@Autowired
 	private MasterSettingsService masterSettingsService;
 
+	@Autowired
+	private ThreadPool pool;
+
 	@Scheduled(cron = "0 15 * * * *")
 	public void updatePriceDataSchedule() {
 		if (!masterSettingsService.areWeRunning()) {
@@ -59,22 +62,28 @@ public class PriceUpdaterService {
 			ScratchConstants.Exchange exchange = swap.getSwapDescriptor().getExchangeObj();
 			List<PriceData> exchangeData = priceDataForAllExchanges.get(exchange);
 			ExchangeCache.Position position = swap.getSwapExecutor().getCache().addPriceData(exchangeData);
-			TradeAction action = null;
-			if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_1 &&
+			if (swap.getSwapExecutor().getCurrentSwapState() == ScratchConstants.CurrentSwapState.OWNS_COIN_1 &&
 					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
 				logger.info("Above desired ration - swapping: " + swap.getSwapDescriptor().getCoin1() + " for " +
 						swap.getSwapDescriptor().getCoin2());
-				action = swap.getSwapExecutor().swapCoin1ToCoin2(exchangeData, swap.getSwapDescriptor().getSimulate());
-			} else if (swap.getSwapExecutor().getCurrentSwapState() == SwapExecutor.CurrentSwapState.OWNS_COIN_2 &&
+				launchThread(exchangeData, swap, false);
+			} else if (swap.getSwapExecutor().getCurrentSwapState() == ScratchConstants.CurrentSwapState.OWNS_COIN_2 &&
 					position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
 				logger.info("Below desired ration - swapping: " + swap.getSwapDescriptor().getCoin2() + " for " +
 						swap.getSwapDescriptor().getCoin1());
-				action = swap.getSwapExecutor().swapCoin2ToCoin1(exchangeData, swap.getSwapDescriptor().getSimulate());
-			}
-			if (action != null) {
-				messageService.summarizeTrade(swap, action);
+				launchThread(exchangeData, swap, true);
 			}
 		}
+	}
+
+	public void launchThread(List<PriceData> priceData, SwapService.Swap swap, boolean buyCoin1) {
+		if (swap.getSwapExecutor().isInSwap()) {
+			logger.info("Already in swap - Continue to wait");
+			return;
+		}
+		logger.info("Launching swap thread");
+		SwapExecutorThread thread = new SwapExecutorThread(priceData, swap, buyCoin1);
+		pool.threadPoolTaskExecutor().execute(thread);
 	}
 
 	public Map<ScratchConstants.Exchange, List<PriceData>> getAllPriceDataForAllExchanges(List<SwapService.Swap> swaps) {

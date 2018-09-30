@@ -2,6 +2,7 @@ package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.components.SwapExecutor;
+import com.sharshar.coinswap.config.ThreadPool;
 import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.repositories.SwapRepository;
 import com.sharshar.coinswap.repositories.TickerRepository;
@@ -72,7 +73,10 @@ public class SwapService {
 	private ApplicationContext applicationContext;
 
 	@Autowired
-	AccountServiceFinder accountServiceFinder;
+	private AccountServiceFinder accountServiceFinder;
+
+	@Autowired
+	private ThreadPool threadPool;
 
 	@Value("${defaultBaseCurrency}")
 	private String defaultBaseCurrency;
@@ -98,6 +102,11 @@ public class SwapService {
 				swaps.add(swap);
 			}
 		}
+		// Set the min thread pool size to the number of swaps we have so each will have it's own lane unless it's
+		// really small
+		if (swaps.size() > threadPool.threadPoolTaskExecutor().getCorePoolSize()) {
+			threadPool.threadPoolTaskExecutor().setCorePoolSize(swaps.size());
+		}
 	}
 
 	public void updateVolume() {
@@ -110,6 +119,43 @@ public class SwapService {
 		}
 	}
 
+	/**
+	 * Updates the current state of the coin in the database. In theory the passed SwapDescriptor is in the database
+	 * and the same object as in the swap list. If it isn't, make sure to update the SwapDescriptor in the list also.
+	 * This will not insert a SwapDescriptor, it will just update the field since this is most likely a simulation.
+	 *
+	 * @param sd - the swap descriptor
+	 * @param swapState - the state to set it to
+	 * @return - the saved object or null if it isn't already in the database.
+	 */
+	public SwapDescriptor updateCoinOwned(SwapDescriptor sd, ScratchConstants.CurrentSwapState swapState) {
+		// Can't update a null record
+		if (sd == null) {
+			return null;
+		}
+		// Update the field
+		sd.setCurrentSwapState(swapState);
+
+		// we're simulating most likely
+		if (sd.getTableId() == null || sd.getTableId() == 0) {
+			return sd;
+		}
+		// Save it to the database
+		SwapDescriptor savedSd = swapRepository.save(sd);
+
+		if (swaps == null) {
+			swaps = new ArrayList<>();
+		}
+		// Find the swap in the swaps list
+		Swap swap = swaps.stream().filter(c -> c.getSwapDescriptor().getTableId() == sd.getTableId()).findFirst().orElse(null);
+		if (swap == null || swap.getSwapDescriptor() == null) {
+			return null;
+		}
+		SwapDescriptor sdInList = swap.getSwapDescriptor();
+		// Set the current state in cache if it's not already the same object
+		sdInList.setCurrentSwapState(sd.getCurrentSwapState());
+		return savedSd;
+	}
 
 	public void shutdown() {
 		logger.info("Shutting down trade service");
@@ -210,7 +256,7 @@ public class SwapService {
 	 * @param swapDescriptor - A description of the swap
 	 * @return the swap descriptor
 	 */
-	public SwapDescriptor addComponement(SwapDescriptor swapDescriptor) {
+	public SwapDescriptor addComponent(SwapDescriptor swapDescriptor) {
 		Swap match = getMatch(swapDescriptor.getExchangeObj(), swapDescriptor.getCoin1(), swapDescriptor.getCoin2());
 		if (match != null) {
 			return match.getSwapDescriptor();
