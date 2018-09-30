@@ -98,7 +98,7 @@ public class SwapExecutor {
 	public SwapExecutor(SwapDescriptor swapDescriptor, AccountService accountService) {
 		this.swapDescriptor = swapDescriptor;
 		this.accountService = accountService;
-		this.currentSwapState = CurrentSwapState.OWNS_COIN_1;
+		this.currentSwapState = CurrentSwapState.OWNS_COIN_2;
 		// This is not a simulation, so load the coin balances
 		if (swapDescriptor != null && (swapDescriptor.getSimulate() != null && !swapDescriptor.getSimulate())) {
 			this.loadBalances();
@@ -498,7 +498,7 @@ public class SwapExecutor {
 		if (amount < coin.getMinQty() && coin.getMinQty() > 0) {
 			return 0;
 		}
-		amountToTransact = correctForVolume(coin, amountToTransact, maxVolume);
+		amountToTransact = 0.95 * correctForVolume(coin, amountToTransact, maxVolume);
 		return correctForStep(coin.getStepSize(), amountToTransact);
 	}
 

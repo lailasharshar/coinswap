@@ -57,7 +57,7 @@ public class TickerService {
 	@Value("${commissionAsset}")
 	private String commissionAsset;
 
-	@Scheduled(cron = "0 5 * * * *")
+	@Scheduled(cron = "0 5 5 * * *")
 	public void loadTickers() {
 		reconcileDbListWithExchangeList(ScratchConstants.Exchange.BINANCE);
 		swapService.updateVolume();
