@@ -48,6 +48,9 @@ public class BinanceAccountServices implements AccountService {
 	@Value("${binance.transactionFee}")
 	private double transactionFee;
 
+	@Value("${maxBaseCoinChunks:0.03}")
+	private double maxBaseCoinChunks;
+
 	public double getDefaultTransactionFee() {
 		return transactionFee;
 	}
@@ -258,6 +261,11 @@ public class BinanceAccountServices implements AccountService {
 
 	public OrderBook getBookOrders(String ticker) {
 		return binanceApiRestClient.getOrderBook(ticker, 1000);
+	}
+
+	@Override
+	public double getMaxAmountAtTime() {
+		return maxBaseCoinChunks;
 	}
 
 	public List<PriceData> getBackfillData(int cacheSize, String coin, String baseCoin) {

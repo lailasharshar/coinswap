@@ -32,4 +32,5 @@ public interface AccountService {
 	Double get24HourVolume(String ticker);
 	List<Ticker> getTickerDefinitions();
 	OrderBook getBookOrders(String ticker);
+	double getMaxAmountAtTime();
 }
