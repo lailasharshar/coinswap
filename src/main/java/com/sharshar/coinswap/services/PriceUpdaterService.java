@@ -82,7 +82,7 @@ public class PriceUpdaterService {
 			return;
 		}
 		logger.info("Launching swap thread");
-		SwapExecutorThread thread = new SwapExecutorThread(priceData, swap, buyCoin1);
+		SwapExecutorThread thread = new SwapExecutorThread(priceData, swap, buyCoin1, messageService);
 		pool.threadPoolTaskExecutor().execute(thread);
 	}
 

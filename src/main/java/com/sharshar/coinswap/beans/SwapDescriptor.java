@@ -33,6 +33,7 @@ public class SwapDescriptor implements Serializable{
 	private Double lastVolume1;
 	private Double lastVolume2;
 	private int coinOwned;
+	private double percentPie;
 
 	public ScratchConstants.Exchange getExchangeObj() {
 		if (exchange == 0) {
@@ -91,6 +92,7 @@ public class SwapDescriptor implements Serializable{
 				.setMaxPercentVolume(sd.getMaxPercentVolume())
 				.setLastVolume1(sd.getLastVolume1())
 				.setLastVolume2(sd.getLastVolume2())
+				.setPercentPie(sd.getPercentPie())
 				.setTableId(sd.getTableId());
 	}
 }

@@ -11,6 +11,7 @@ import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.exchanges.AccountService;
+import com.sharshar.coinswap.services.PurchaseAdvisor;
 import com.sharshar.coinswap.services.SwapService;
 import com.sharshar.coinswap.utils.CoinUtils;
 import com.sharshar.coinswap.utils.ScratchConstants;
@@ -208,7 +209,8 @@ public class SwapExecutor {
 		}
 	}
 
-	private TradeAction doBaseTrade(double amountCoinToSell, Ticker coinA, Ticker coinB, List<PriceData> priceData) {
+	private TradeAction doBaseTrade(List<OwnedAsset> ownedAssets, double amountCoinToSell, Ticker coinA, Ticker coinB,
+									List<PriceData> priceData) {
 		TradeAction action = new TradeAction();
 		double transFee = accountService.getDefaultTransactionFee();
 		double priceForCommissionCoin = CoinUtils.getPrice(swapDescriptor.getCommissionCoin() + swapDescriptor.getBaseCoin(),
@@ -218,7 +220,8 @@ public class SwapExecutor {
 			action.setPriceCoin1(1.0);
 			double buyPrice = CoinUtils.getPrice(coinB.getAssetAndBase(), priceData);
 			action.setPriceCoin2(buyPrice);
-			double coinToBuyAmount = correctedAmount(coinB, amountCoinToSell / buyPrice, swapDescriptor.getMaxPercentVolume());
+			double coinToBuyAmount = correctedAmount(coinB, amountCoinToSell / buyPrice,
+					swapDescriptor.getMaxPercentVolume(), false, false, ownedAssets, priceData);
 			if (coinToBuyAmount < coinB.getMinQty()) {
 				action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_SELL);
 				return action;
@@ -241,7 +244,8 @@ public class SwapExecutor {
 			action.setPriceCoin2(1.0);
 			double sellPrice = CoinUtils.getPrice(coinA.getAssetAndBase(), priceData);
 			action.setPriceCoin1(sellPrice);
-			double coinToSellAmount = correctedAmount(coinA, amountCoinToSell, swapDescriptor.getMaxPercentVolume());
+			double coinToSellAmount = correctedAmount(coinA, amountCoinToSell, swapDescriptor.getMaxPercentVolume(),
+					false, false, ownedAssets, priceData);
 			if (coinToSellAmount < coinA.getMinQty()) {
 				action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_BUY);
 				return action;
@@ -278,7 +282,8 @@ public class SwapExecutor {
 		if (coinA.getAsset().equalsIgnoreCase(coinA.getBase())) {
 			// first coin is base coin - use it to buy second coin
 			double buyPrice = CoinUtils.getPrice(coinB.getAssetAndBase(), priceData);
-			double coinToBuyAmount = correctedAmount(coinB, amountCoinToSell/buyPrice, swapDescriptor.getMaxPercentVolume());
+			double coinToBuyAmount = correctedAmount(coinB, amountCoinToSell/buyPrice,
+					swapDescriptor.getMaxPercentVolume(), true, true, null, priceData);
 			if (coinToBuyAmount < coinB.getMinQty()) {
 				action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_SELL);
 				return action;
@@ -292,7 +297,8 @@ public class SwapExecutor {
 		} else if (coinB.getAsset().equalsIgnoreCase(coinB.getBase())) {
 			// second coin is base coin - sell first coin
 			double sellPrice = CoinUtils.getPrice(coinA.getAssetAndBase(), priceData);
-			double coinToSellAmount = correctedAmount(coinA, amountCoinToSell, swapDescriptor.getMaxPercentVolume());
+			double coinToSellAmount = correctedAmount(coinA, amountCoinToSell, swapDescriptor.getMaxPercentVolume(),
+					true, false, null, priceData);
 			if (coinToSellAmount < coinA.getMinQty()) {
 				action.setResponseCode(ResponseCode.NOT_ENOUGH_TO_BUY);
 				return action;
@@ -332,7 +338,8 @@ public class SwapExecutor {
 		if (swapDescriptor.hasBaseCoin()) {
 			return simulateBaseTrade(amountCoinAToSell, coinA, coinB, priceData);
 		}
-		CoinValues coinValues = getAdjustmentAmounts(coinA, amountCoinAToSell, coinB, cache.getCommissionTicker(), priceData);
+		CoinValues coinValues = getAdjustmentAmounts(null, coinA, amountCoinAToSell, coinB,
+				cache.getCommissionTicker(), priceData, true);
 		coinValues = getPenaltyBookPrices(coinValues);
 
 		// If we have nothing to sell :( return
@@ -398,20 +405,29 @@ public class SwapExecutor {
 	 * @param priceData - the latest price data to perform conversions between the three tickers
 	 * @return the corrected values to sell, buy and estimated commissions
 	 */
-	private CoinValues getAdjustmentAmounts(Ticker tickerToSell, double amountToSell, Ticker tickerToBuy,
-										   Ticker commissionCoin, List<PriceData> priceData) {
+	private CoinValues getAdjustmentAmounts(List<OwnedAsset> ownedAssets, Ticker tickerToSell, double amountToSell,
+											Ticker tickerToBuy, Ticker commissionCoin, List<PriceData> priceData,
+											boolean simulate) {
 		double sellPrice = CoinUtils.getPrice(tickerToSell.getAssetAndBase(), priceData);
 		double buyPrice = CoinUtils.getPrice(tickerToBuy.getAssetAndBase(), priceData);
-		double coinToSellAmount = correctedAmount(tickerToSell, amountToSell, swapDescriptor.getMaxPercentVolume());
+		double coinToSellAmount = correctedAmount(tickerToSell, amountToSell, swapDescriptor.getMaxPercentVolume(),
+				simulate, false, ownedAssets, priceData);
 		double amountCoinToBuy = (sellPrice * amountToSell) / buyPrice;
-		double correctedAmountCoinToBuy = correctedAmount(tickerToBuy, amountCoinToBuy, swapDescriptor.getMaxPercentVolume());
+		double correctedAmountCoinToBuy = correctedAmount(tickerToBuy, amountCoinToBuy,
+				swapDescriptor.getMaxPercentVolume(), simulate, true, ownedAssets, priceData);
 		if (correctedAmountCoinToBuy < amountCoinToBuy) {
 			double refundOfBuy = amountCoinToBuy - correctedAmountCoinToBuy;
 			double refundOfSell = (buyPrice * refundOfBuy) / sellPrice;
-			coinToSellAmount = correctedAmount(tickerToSell, amountToSell - refundOfSell, swapDescriptor.getMaxPercentVolume());
+			coinToSellAmount = correctedAmount(tickerToSell, amountToSell - refundOfSell,
+					swapDescriptor.getMaxPercentVolume(), simulate, false, ownedAssets, priceData);
 		}
 		CoinValues cv = new CoinValues();
-		cv.buyCoin = correctedAmountCoinToBuy;
+		if (simulate) {
+			cv.buyPrice = correctedAmountCoinToBuy;
+		} else {
+			cv.buyCoin = PurchaseAdvisor.getAmountToBuy(ownedAssets, swapDescriptor, tickerToBuy.getAsset(),
+					tickerToBuy.getBase(), correctedAmountCoinToBuy, priceData);
+		}
 		cv.buyPrice = buyPrice;
 		cv.sellPrice = sellPrice;
 		cv.sellCoin = coinToSellAmount;
@@ -444,17 +460,19 @@ public class SwapExecutor {
 			System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Live swap !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 		}
 
+		List<OwnedAsset> ownedAssets = accountService.getAllBalances();
 		TradeAction action = new TradeAction();
 		if (coinB.getAsset().equalsIgnoreCase(swapDescriptor.getBaseCoin()) ||
 				coinA.getAsset().equalsIgnoreCase(swapDescriptor.getBaseCoin())) {
-			return doBaseTrade(amountCoinAToSell, coinA, coinB, priceData);
+			return doBaseTrade(ownedAssets, amountCoinAToSell, coinA, coinB, priceData);
 		}
 		ResponseCode initErrors = getAnyInitializationErrors();
 		if (initErrors != null) {
 			action.setResponseCode(initErrors);
 			return action;
 		}
-		CoinValues coinValues = getAdjustmentAmounts(coinA, amountCoinAToSell, coinB, cache.getCommissionTicker(), priceData);
+		CoinValues coinValues = getAdjustmentAmounts(ownedAssets, coinA, amountCoinAToSell, coinB,
+				cache.getCommissionTicker(), priceData, false);
 
 		// If we have nothing to sell :( return
 		if (coinValues.sellCoin < coinA.getMinQty()) {
@@ -518,7 +536,8 @@ public class SwapExecutor {
 	 * @param maxVolume - the max percent of daily volume we are willing to go up to
 	 * @return the corrected amount
 	 */
-	private double correctedAmount(Ticker coin, double amount, Double maxVolume) {
+	private double correctedAmount(Ticker coin, double amount, Double maxVolume, boolean simulate, boolean buy,
+								   List<OwnedAsset> ownedAssets, List<PriceData> priceData) {
 		if (coin.getAsset().equalsIgnoreCase(coin.getBase())) {
 			return amount;
 		}
@@ -531,7 +550,11 @@ public class SwapExecutor {
 		if (amount < coin.getMinQty() && coin.getMinQty() > 0) {
 			return 0;
 		}
-		amountToTransact = 0.95 * correctForVolume(coin, amountToTransact, maxVolume);
+		if (!simulate && buy) {
+			amountToTransact = PurchaseAdvisor.getAmountToBuy(ownedAssets, swapDescriptor, coin.getAsset(),
+					coin.getBase(), amountToTransact, priceData);
+		}
+		amountToTransact = 0.98 * correctForVolume(coin, amountToTransact, maxVolume);
 		return correctForStep(coin.getStepSize(), amountToTransact);
 	}
 
@@ -673,7 +696,8 @@ public class SwapExecutor {
 			return;
 		}
 		double lastTickerPrice = priceData.getPrice();
-		this.amountCoin1OwnedFree = correctedAmount(cache.getTicker1(), (inBaseCoin/lastTickerPrice), swapDescriptor.getMaxPercentVolume());
+		this.amountCoin1OwnedFree = correctedAmount(cache.getTicker1(), (inBaseCoin/lastTickerPrice),
+				swapDescriptor.getMaxPercentVolume(), true, true, null, null);
 	}
 
 	/**
@@ -912,7 +936,7 @@ public class SwapExecutor {
 		while (status == OrderStatus.PARTIALLY_FILLED) {
 			logger.info("Not quite filled");
 			try {
-				Thread.sleep(1000);
+				Thread.sleep(10000);
 			} catch (Exception ex) {
 				logger.error("Unable to sleep thread between purchase and checking");
 			}

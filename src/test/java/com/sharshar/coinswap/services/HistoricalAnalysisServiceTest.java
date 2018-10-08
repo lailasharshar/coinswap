@@ -52,7 +52,7 @@ public class HistoricalAnalysisServiceTest {
 	@Autowired
 	BinanceAccountServices binance;
 
-	@Test
+	//@Test
 	public void getGoodBTC() {
 		double stdDev = 0.1;
 		double maxVolume = 0.08;
@@ -71,7 +71,7 @@ public class HistoricalAnalysisServiceTest {
 		}
 	}
 
-	@Test
+	//@Test
 	public void simulateHistoricalWithBTC() throws Exception {
 		double stdDev = 0.3;
 		//while (stdDev < 2.00) {

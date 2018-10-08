@@ -47,6 +47,7 @@ CREATE TABLE `swap` (
   `last_volume1` double DEFAULT NULL,
   `last_volume2` double DEFAULT NULL,
   `coin_owned` varchar(20) DEFAULT NULL,
+  `percent_pie` double DEFAULT NULL,
   PRIMARY KEY (`table_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
