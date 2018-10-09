@@ -11,6 +11,7 @@ import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.exchanges.AccountService;
+import com.sharshar.coinswap.services.HistoricalPriceCache;
 import com.sharshar.coinswap.services.PurchaseAdvisor;
 import com.sharshar.coinswap.services.SwapService;
 import com.sharshar.coinswap.utils.CoinUtils;
@@ -96,6 +97,9 @@ public class SwapExecutor {
 
 	private AccountService accountService;
 
+	@Autowired
+	private HistoricalPriceCache historicalPriceCache;
+
 	public SwapExecutor(SwapDescriptor swapDescriptor, AccountService accountService) {
 		this.swapDescriptor = swapDescriptor;
 		this.accountService = accountService;
@@ -155,14 +159,13 @@ public class SwapExecutor {
 	 * the cache with those values.
 	 */
 	public void backFillData() {
-		List<PriceData> comm = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCommissionCoin(), swapDescriptor.getBaseCoin());
-
+		List<PriceData> comm = historicalPriceCache.getHistoricalData(swapDescriptor.getCommissionCoin(), swapDescriptor.getBaseCoin(), cache.getCacheSize());
 		List<PriceData> baseData = getBaseData(comm, swapDescriptor.getBaseCoin());
 		List<PriceData> pd1 = null;
 		if (swapDescriptor.getCoin1().equalsIgnoreCase(swapDescriptor.getBaseCoin())) {
 			pd1 = baseData;
 		} else {
-			pd1 = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCoin1(), swapDescriptor.getBaseCoin());
+			pd1 = historicalPriceCache.getHistoricalData(swapDescriptor.getCoin1(), swapDescriptor.getBaseCoin(), cache.getCacheSize());
 		}
 		cache.bulkLoadData(swapDescriptor.getCoin1() + swapDescriptor.getBaseCoin(), pd1);
 
@@ -170,7 +173,7 @@ public class SwapExecutor {
 		if (swapDescriptor.getCoin2().equalsIgnoreCase(swapDescriptor.getBaseCoin())) {
 			pd2 = baseData;
 		} else {
-			pd2 = accountService.getBackfillData(cache.getCacheSize(), swapDescriptor.getCoin2(), swapDescriptor.getBaseCoin());
+			pd2 = historicalPriceCache.getHistoricalData(swapDescriptor.getCoin2(), swapDescriptor.getBaseCoin(), cache.getCacheSize());
 		}
 		cache.bulkLoadData(swapDescriptor.getCoin2() + swapDescriptor.getBaseCoin(), pd2);
 		cache.bulkLoadData(swapDescriptor.getCommissionCoin() + swapDescriptor.getBaseCoin(), comm);
