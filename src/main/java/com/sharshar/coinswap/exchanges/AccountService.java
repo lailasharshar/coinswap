@@ -21,9 +21,9 @@ public interface AccountService {
 	List<OwnedAsset> getBalancesWithValues();
 	OwnedAsset getBalance(String asset);
 	double getDefaultTransactionFee();
-	NewOrderResponse createBuyMarketOrder(String ticker, double amount);
+	NewOrderResponse createBuyMarketOrder(String ticker, double amount, Long refId);
 	NewOrderResponse buyMarketTest(String ticker, double amount);
-	NewOrderResponse createSellMarketOrder(String ticker, double amount);
+	NewOrderResponse createSellMarketOrder(String ticker, double amount, Long refId);
 	NewOrderResponse sellMarketTest(String ticker, double amount);
 	List<Trade> getMyTrades(String ticker, String orderId);
 	Order checkOrderStatus(String ticker, String origClientOrderId);

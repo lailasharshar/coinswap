@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 
 /**
+ * If we've pulled the data in the last hour or so, no need to get it again. Cache it and return it
+ *
  * Created by lsharshar on 10/8/2018.
  */
 @Service

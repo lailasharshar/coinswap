@@ -1,6 +1,7 @@
 package com.sharshar.coinswap.services;
 
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.beans.SwapStatus;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.config.ThreadPool;
 import com.sharshar.coinswap.exchanges.AccountService;
@@ -33,6 +34,8 @@ public class SwapService {
 	@Autowired
 	private MasterSettingsService masterSettingsService;
 
+	@Autowired
+	private OrderHistoryService orderHistoryService;
 
 	/**
 	 * An object that contains all the information about a swap in one place
@@ -57,6 +60,27 @@ public class SwapService {
 		private Swap setSwapDescriptor(SwapDescriptor swapDescriptor) {
 			this.swapDescriptor = swapDescriptor;
 			return this;
+		}
+
+		public SwapStatus getSwapStatus() {
+			SwapStatus status = new SwapStatus();
+			if (swapDescriptor != null) {
+				status.setId(swapDescriptor.getTableId());
+				status.setBaseCoin(swapDescriptor.getBaseCoin());
+				status.setCoin1(swapDescriptor.getCoin1());
+				status.setCoin2(swapDescriptor.getCoin2());
+				status.setCommissionCoin(swapDescriptor.getCommissionCoin());
+				status.setSimulate(swapDescriptor.getSimulate());
+				status.setActive(swapDescriptor.getActive());
+				if (swapDescriptor.getTableId() != null && swapDescriptor.getTableId() > 0) {
+					status.setOrderHistories(orderHistoryService.getAllOrdersForSwap(swapDescriptor.getTableId()));
+				}
+			}
+			if (swapExecutor != null) {
+				status.setInSwap(swapExecutor.isInSwap());
+				status.setCoinOwned(swapExecutor.getCurrentSwapState());
+			}
+			return status;
 		}
 	}
 

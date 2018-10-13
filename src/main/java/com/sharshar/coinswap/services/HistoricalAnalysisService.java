@@ -32,7 +32,7 @@ public class HistoricalAnalysisService {
 	private Logger logger = LogManager.getLogger();
 
 	@Autowired
-	private HistoricalDataPull historicalDataPull;
+	private HistoricalPriceCache historicalPriceCache;
 
 	@Autowired
 	private SwapService swapService;
@@ -67,11 +67,12 @@ public class HistoricalAnalysisService {
 			return null;
 		}
 		List<List<PriceData>> priceData = loadPriceData(descriptor.getCoin1(), descriptor.getCoin2(),
-				descriptor.getBaseCoin(), descriptor.getCommissionCoin(), 0, descriptor.getExchangeObj());
+				descriptor.getBaseCoin(), descriptor.getCommissionCoin(), 5000, descriptor.getExchangeObj());
 		List<List<PriceData>> cleanedUpList = cleanUpData(priceData);
 		List<List<PriceData>> distributedData = distributeDataByDate(cleanedUpList);
 		SwapDescriptor swapDescriptor = SerializationUtils.clone(descriptor);
 		swapDescriptor.setSimulate(true);
+		swapDescriptor.setActive(true);
 		return simulateOverTime(swapDescriptor, distributedData, checkUpInterval, seedMoney);
 	}
 
@@ -252,38 +253,32 @@ public class HistoricalAnalysisService {
 	public List<List<PriceData>> loadPriceData(String coin1, String coin2, String baseCoin,
 												String commissionCoin, int numPulled, ScratchConstants.Exchange exchange) {
 		List<List<PriceData>> pd = new ArrayList<>();
-		List<Data> coin1HistoryData;
-		List<Data> commissionHistoryData;
 		List<PriceData> commissionHistoryPd;
-		List<Data> coin2HistoryData = new ArrayList<>();
 		List<PriceData> coin1HistoryPd = new ArrayList<>();
 		List<PriceData> coin2HistoryPd = new ArrayList<>();
 		boolean needToFillInArray1 = false;
 		if (coin1.equalsIgnoreCase(baseCoin)) {
 			needToFillInArray1 = true;
 		} else {
-			coin1HistoryData = historicalDataPull.getData(coin1, baseCoin, numPulled, exchange.name());
-			coin1HistoryPd = convertToPriceData(coin1HistoryData, coin1, baseCoin);
+			coin1HistoryPd = historicalPriceCache.getHistoricalData(coin1, baseCoin, numPulled);
 		}
 		boolean needToFillInArray2 = false;
 		if (coin2.equalsIgnoreCase(baseCoin)) {
 			needToFillInArray2 = true;
 		} else {
-			coin2HistoryData = historicalDataPull.getData(coin2, baseCoin, numPulled, exchange.name());
-			coin2HistoryPd = convertToPriceData(coin2HistoryData, coin2, baseCoin);
+			coin2HistoryPd = historicalPriceCache.getHistoricalData(coin2, baseCoin, numPulled);
 			if (needToFillInArray1) {
-				coin1HistoryPd = generateEmptyList(coin2HistoryData, exchange, baseCoin);
+				coin1HistoryPd = generateEmptyList(coin2HistoryPd, exchange, baseCoin);
 			}
 			pd.add(coin1HistoryPd);
 		}
 		if (needToFillInArray2) {
-			coin2HistoryPd = generateEmptyList(coin2HistoryData, exchange, baseCoin);
+			coin2HistoryPd = generateEmptyList(coin2HistoryPd, exchange, baseCoin);
 		}
 		if (commissionCoin.equalsIgnoreCase(baseCoin)) {
-			commissionHistoryPd = generateEmptyList(coin2HistoryData, exchange, baseCoin);
+			commissionHistoryPd = generateEmptyList(coin2HistoryPd, exchange, baseCoin);
 		} else {
-			commissionHistoryData = historicalDataPull.getData(commissionCoin, baseCoin, numPulled, null);
-			commissionHistoryPd = convertToPriceData(commissionHistoryData, commissionCoin, baseCoin);
+			commissionHistoryPd = historicalPriceCache.getHistoricalData(commissionCoin, baseCoin, numPulled);
 		}
 		pd.add(coin2HistoryPd);
 		pd.add(commissionHistoryPd);
@@ -299,10 +294,10 @@ public class HistoricalAnalysisService {
 	 * @param baseCoin - the base coin
 	 * @return a list of price data that always has a price of 1
 	 */
-	private List<PriceData> generateEmptyList(List<Data> historicalData, ScratchConstants.Exchange exchange, String baseCoin) {
+	private List<PriceData> generateEmptyList(List<PriceData> historicalData, ScratchConstants.Exchange exchange, String baseCoin) {
 		return historicalData.stream().map(c ->
 				new PriceData().setExchange(exchange).setPrice(1.0)
-						.setTicker(baseCoin + baseCoin).setUpdateTime(c.getTime()))
+						.setTicker(baseCoin + baseCoin).setUpdateTime(c.getUpdateTime()))
 				.collect(Collectors.toList());
 	}
 
@@ -326,12 +321,14 @@ public class HistoricalAnalysisService {
 							   double seedMoney, long startTime, long endTime, List<TradeAction> tradeActions) {
 		SimulationRun run = new SimulationRun().setBaseCoin(swapDescriptor.getBaseCoin()).setCoin1(swapDescriptor.getCoin1())
 				.setCoin2(swapDescriptor.getCoin2()).setCommissionCoin(swapDescriptor.getCommissionCoin())
-				.setStartDate(snapshots.get(0).getSnapshotDate())
 				.setStdDev(swapDescriptor.getDesiredStdDev())
-				.setEndDate(snapshots.get(snapshots.size() - 1).getSnapshotDate())
-				.setSimulationStartTime(new Date(startTime)).setSimulationEndTime(new Date(endTime))
 				.setSnapshotInterval(checkUpInterval).setStartAmount(seedMoney)
-				.setEndAmount(snapshots.get(snapshots.size() - 1).getTotalValue());
+				.setSimulationStartTime(new Date(startTime)).setSimulationEndTime(new Date(endTime));
+		if (snapshots != null && !snapshots.isEmpty()) {
+			run.setStartDate(snapshots.get(0).getSnapshotDate())
+					.setEndDate(snapshots.get(snapshots.size() - 1).getSnapshotDate())
+					.setEndAmount(snapshots.get(snapshots.size() - 1).getTotalValue());
+		}
 		RaterResults rater = new RaterResults(snapshots);
 		//run.setMeanChange(rater.getMean());
 		//run.setStdDev(swapDescriptor.getDesiredStdDev());

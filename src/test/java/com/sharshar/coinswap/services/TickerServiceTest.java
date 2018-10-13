@@ -57,6 +57,10 @@ public class TickerServiceTest {
 	}
 
 	@Test
+	public void reconcile() throws Exception {
+		tickerService.reconcileDbListWithExchangeList(ScratchConstants.Exchange.BINANCE);
+	}
+	@Test
 	public void runTimedSimulation() throws Exception {
 	}
 

@@ -1,13 +1,18 @@
 package com.sharshar.coinswap;
 
+import com.binance.api.client.domain.general.ExchangeInfo;
 import com.binance.api.client.domain.market.OrderBook;
 import com.binance.api.client.domain.market.OrderBookEntry;
+import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
+
+import java.util.Date;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -111,5 +116,19 @@ public class Misc {
 	public void testBaseCoin() {
 		assertEquals(services.get24HourVolume("BTCBTC"), 0.0, 0.00000001);
 		assertTrue(services.get24HourVolume("ETHBTC") > 0.00000001);
+	}
+
+	@Test
+	public void testBasicTime() {
+		Date d = new Date();
+		System.out.println(d);
+		long dateBack = 1000L * 60 * 60 * 1000;
+		Date d2 = new Date(d.getTime() - dateBack);
+		System.out.println(d2);
+	}
+
+	@Test
+	public void getExchangeInfo() {
+		List<Ticker> tickers = services.getTickerDefinitions();
 	}
 }

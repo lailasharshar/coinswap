@@ -28,4 +28,8 @@ public class OrderHistoryServiceTest {
 		orders.forEach(c -> System.out.println(c));
 	}
 
+	@Test
+	public void testUpdateOrder() {
+		assertTrue(orderHistoryService.updateWithPrice("345345", "2.5"));
+	}
 }

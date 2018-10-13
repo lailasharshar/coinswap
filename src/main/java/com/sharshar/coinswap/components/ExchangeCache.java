@@ -124,7 +124,14 @@ public class ExchangeCache {
 			logger.error("Invalid price data added to cache");
 			return;
 		}
-		List<PriceData> tickerPd = priceCache.get(getTickerObjFromString(ticker));
+		Ticker t = null;
+		try {
+			t = getTickerObjFromString(ticker);
+		} catch (Exception ex) {
+			logger.error("Can't find ticker from string: " + ticker + ". It may be a typo or the ticker could have been retired");
+			return;
+		}
+		List<PriceData> tickerPd = priceCache.get(t);
 		if (tickerPd == null) {
 			logger.error("Invalid ticker: " + ticker + " passed to method. Must be " + ticker1.getAssetAndBase() +
 					" or " + ticker2.getAssetAndBase());
@@ -270,7 +277,14 @@ public class ExchangeCache {
 	}
 
 	public PriceData getLastPriceData(String ticker) {
-		List<PriceData> pd = priceCache.get(getTickerObjFromString(ticker));
+		Ticker t = null;
+		try {
+			t = getTickerObjFromString(ticker);
+		} catch (Exception ex) {
+			logger.error("Can't find ticker from string: " + ticker + ". It may be a typo or the ticker could have been retired");
+			return null;
+		}
+		List<PriceData> pd = priceCache.get(t);
 		if (pd == null || pd.isEmpty()) {
 			return null;
 		}

@@ -71,18 +71,18 @@ public class HistoricalAnalysisServiceTest {
 		}
 	}
 
-	//@Test
+	@Test
 	public void simulateHistoricalWithBTC() throws Exception {
-		double stdDev = 0.3;
-		//while (stdDev < 2.00) {
+		double stdDev = 0.02;
+		while (stdDev < 1.00) {
 			try {
 				runSimulation("BTC", "BCD", 0.05, stdDev);
 				stdDev += 0.02;
-				Thread.sleep(20000L);
+				//Thread.sleep(20000L);
 			} catch (Exception ex) {
 				ex.printStackTrace();
 			}
-		//}
+		}
 	}
 
 	@Test
@@ -161,8 +161,8 @@ public class HistoricalAnalysisServiceTest {
 
 	//@Test
 	public void simulateRandom() {
-		tickerService.loadTickers();
-		simulationRunner.runRandomSimulation();
+		//tickerService.loadTickers();
+		//simulationRunner.runRandomSimulation();
 	}
 
 

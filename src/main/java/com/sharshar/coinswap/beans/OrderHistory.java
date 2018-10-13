@@ -28,4 +28,6 @@ public class OrderHistory {
 	private Date createDtm;
 	private double amount;
 	private String status;
+	private Double price;
+	private Long swapId;
 }

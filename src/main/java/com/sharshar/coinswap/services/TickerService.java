@@ -86,11 +86,15 @@ public class TickerService {
 		return tickers;
 	}
 
-	private void reconcileDbListWithExchangeList(ScratchConstants.Exchange exchange) {
+	public void reconcileDbListWithExchangeList(ScratchConstants.Exchange exchange) {
 		List<Ticker> tickersFromExchange = getTickersFromExchange(exchange);
 		logger.info(tickersFromExchange.size() + " Tickers from Exchange");
 		List<Ticker> tickersFromDb = loadTickerListFromDb();
 		logger.info(tickersFromDb.size() + " Tickers from Db");
+		if (tickersFromExchange == null || tickersFromExchange.isEmpty()) {
+			logger.error("Tickers from Exchange is empty - probably bad connection to exchange");
+			return;
+		}
 
 		List<Ticker> addedTickers = new ArrayList<>();
 

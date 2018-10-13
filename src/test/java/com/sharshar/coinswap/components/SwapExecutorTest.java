@@ -179,7 +179,7 @@ public class SwapExecutorTest {
 				.setCommissionCoin("BNB").setDesiredStdDev(4.0);
 		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
 		SwapExecutor executor = swap.getSwapExecutor();
-		SwapExecutor.ResponseCode code = executor.sellCoin(executor.getCache().getTicker1(), 2);
+		SwapExecutor.ResponseCode code = executor.sellCoin(executor.getCache().getTicker1(), 2, swapDescriptor.getTableId());
 		assertEquals(code, SELL_ORDER_FILLED);
 		executor.loadBalances();
 	}

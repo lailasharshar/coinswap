@@ -10,9 +10,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -46,17 +47,23 @@ public class SimulationRunner {
 	@Autowired
 	private TradeActionRepository tradeActionRepository;
 
-	//@Scheduled(fixedRate = 5000)
+	@Scheduled(fixedRate = 5000)
 	public void runTimedSimulation() {
-		runRandomSimulation();
+		runRandomSimulation(true);
+		runRandomSimulation(false);
 	}
 
-	public void runRandomSimulation() {
+	public void runRandomSimulation(boolean btcOnly) {
 		List<Ticker> tickers = tickerService.getTickers();
 		if (tickers == null) {
 			return;
 		}
-		List<Ticker> itemsToUse = tickers.stream()
+		List<Ticker> newTickers = new ArrayList<>();
+		tickers.forEach(c -> newTickers.add(c));
+		Ticker btcTicker = new Ticker().setAsset("BTC").setBase("BTC").setExchange(ScratchConstants.Exchange.BINANCE.getValue())
+				.setStepSize(0.00001);
+		newTickers.add(btcTicker);
+		List<Ticker> itemsToUse = newTickers.stream()
 				.filter(c -> c.getBase().equalsIgnoreCase(defaultBaseCurrency))
 				.filter(c -> c.getRetired() == null)
 				.collect(Collectors.toList());
@@ -67,8 +74,11 @@ public class SimulationRunner {
 		while (selectItem2 == selectItem1) {
 			selectItem2 = random.nextInt(numTickers);
 		}
-		double desiredStdDev = (Math.random() * 3);
-		Ticker ticker1 = itemsToUse.get(selectItem1);
+		double desiredStdDev = (Math.random() * 1.5);
+		Ticker ticker1 = btcTicker;
+		if (!btcOnly) {
+			ticker1 = itemsToUse.get(selectItem1);
+		}
 		Ticker ticker2 = itemsToUse.get(selectItem2);
 		SwapDescriptor sd = new SwapDescriptor().setCoin1(ticker1.getAsset()).setCoin2(ticker2.getAsset())
 				.setActive(false).setCommissionCoin(commissionAsset).setDesiredStdDev(desiredStdDev)

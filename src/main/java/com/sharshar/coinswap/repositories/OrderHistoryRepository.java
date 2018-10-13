@@ -13,4 +13,6 @@ import java.util.List;
 public interface OrderHistoryRepository extends CrudRepository<OrderHistory, Long> {
 	List<OrderHistory> findByStatus(String status);
 	List<OrderHistory> findAllByOrderByCreateDtmDesc();
+	List<OrderHistory> findByClientOrderId(String clientOrderId);
+	List<OrderHistory> findBySwapId(Long swapId);
 }

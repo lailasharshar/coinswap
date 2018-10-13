@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
+import java.util.Date;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -33,4 +34,23 @@ public class HistoricalPriceCacheTest {
 		assertEquals(priceDataList.get(0), priceDataList2.get(0));
 	}
 
+	@Test
+	public void getBigHistoricalData() throws Exception {
+		List<PriceData> priceDataList = historicalPriceCache.getHistoricalData("BCD", "BTC", 2500);
+		assertTrue(priceDataList.size() == 2500);
+		long anHour = (1000 * 60 * 60);
+		Date earlyDate = priceDataList.get(0).getUpdateTime();
+		for (PriceData pd : priceDataList) {
+			Date dateVal = pd.getUpdateTime();
+			if (dateVal.getTime() == earlyDate.getTime()) {
+				continue;
+			}
+			if (dateVal.getTime() - earlyDate.getTime() != anHour) {
+				System.out.println(earlyDate + " and " + dateVal + " are not an hour apart (" + (dateVal.getTime() - earlyDate.getTime()) + ")");
+			}
+			earlyDate = dateVal;
+		}
+		Date lastDate = priceDataList.get(priceDataList.size() - 1).getUpdateTime();
+		assertTrue(new Date().getTime() - lastDate.getTime() < anHour);
+	}
 }

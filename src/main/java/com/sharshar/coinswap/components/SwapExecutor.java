@@ -12,6 +12,7 @@ import com.sharshar.coinswap.beans.simulation.SimulatorRecord;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.exchanges.AccountService;
 import com.sharshar.coinswap.services.HistoricalPriceCache;
+import com.sharshar.coinswap.services.OrderHistoryService;
 import com.sharshar.coinswap.services.PurchaseAdvisor;
 import com.sharshar.coinswap.services.SwapService;
 import com.sharshar.coinswap.utils.CoinUtils;
@@ -83,6 +84,9 @@ public class SwapExecutor {
 
 	@Autowired
 	private SwapService swapService;
+
+	@Autowired
+	private OrderHistoryService orderHistoryService;
 
 	private ExchangeCache cache;
 	private SwapDescriptor swapDescriptor;
@@ -426,7 +430,7 @@ public class SwapExecutor {
 		}
 		CoinValues cv = new CoinValues();
 		if (simulate) {
-			cv.buyPrice = correctedAmountCoinToBuy;
+			cv.buyCoin = correctedAmountCoinToBuy;
 		} else {
 			cv.buyCoin = PurchaseAdvisor.getAmountToBuy(ownedAssets, swapDescriptor, tickerToBuy.getAsset(),
 					tickerToBuy.getBase(), correctedAmountCoinToBuy, priceData);
@@ -495,7 +499,7 @@ public class SwapExecutor {
 
 		/* first we sell */
 
-		ResponseCode sellResponse = sellCoin(coinA, coinValues.sellCoin);
+		ResponseCode sellResponse = sellCoin(coinA, coinValues.sellCoin, swapDescriptor.getTableId());
 		if (sellResponse == ResponseCode.SELL_ORDER_FILLED) {
 			logger.info("Sell order filled for: " + coinA.getAssetAndBase());
 			if (!loadBalances()) {
@@ -752,10 +756,10 @@ public class SwapExecutor {
 	 * @param amountCoinToSell - the amount to sell
 	 * @return the response code to the sell
 	 */
-	public ResponseCode sellCoin(Ticker coin, double amountCoinToSell) {
+	public ResponseCode sellCoin(Ticker coin, double amountCoinToSell, long swapId) {
 		logger.info("Selling " + amountCoinToSell + " of " + coin.getAssetAndBase());
 		long startTime = System.currentTimeMillis();
-		NewOrderResponse response = accountService.createSellMarketOrder(coin.getAssetAndBase(), amountCoinToSell);
+		NewOrderResponse response = accountService.createSellMarketOrder(coin.getAssetAndBase(), amountCoinToSell, swapId);
 		if (response == null) {
 			return ResponseCode.SELL_ORDER_ERROR;
 		}
@@ -763,6 +767,10 @@ public class SwapExecutor {
 		// Retrieve the transaction Id
 		String clientId = response.getClientOrderId();
 		Order order = waitForResponse(coin.getAssetAndBase(), clientId);
+		String orderPrice = order.getPrice();
+		if (!orderHistoryService.updateWithPrice(clientId, orderPrice)) {
+			logger.error("Unable to determine the order price of order " + clientId);
+		}
 
 		double totalTimeInSeconds = ((double) System.currentTimeMillis() - startTime) / 1000;
 		logger.info("Sell order " + order.getClientOrderId() + " (" + order.getOrderId() + ") completed in " + totalTimeInSeconds + " seconds");
@@ -845,7 +853,7 @@ public class SwapExecutor {
 		this.amountSelling = totalAmountToSell;
 		ResponseCode errorCode = null;
 		for (double amt : itemsBrokenUp) {
-			ResponseCode responseCode = sellCoin(ticker, amt);
+			ResponseCode responseCode = sellCoin(ticker, amt, swapDescriptor.getTableId());
 			if (responseCode != SELL_ORDER_FILLED) {
 				errorCode = responseCode;
 			} else {
@@ -892,7 +900,7 @@ public class SwapExecutor {
 	public ResponseCode buyCoin(Ticker coin, double amountToBuy) {
 		logger.info("Buying " + amountToBuy + " of " + coin.getAssetAndBase());
 		long startTime = System.currentTimeMillis();
-		NewOrderResponse response = accountService.createBuyMarketOrder(coin.getAssetAndBase(), amountToBuy);
+		NewOrderResponse response = accountService.createBuyMarketOrder(coin.getAssetAndBase(), amountToBuy, swapDescriptor.getTableId());
 		if (response == null) {
 			return ResponseCode.BUY_ORDER_ERROR;
 		}

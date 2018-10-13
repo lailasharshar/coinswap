@@ -1,28 +1,22 @@
 package com.sharshar.coinswap.controllers;
 
 import com.sharshar.coinswap.beans.SwapDescriptor;
-import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.services.SwapService;
-import com.sharshar.coinswap.services.TickerService;
-import com.sharshar.coinswap.utils.ScratchConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 /**
+ * Allows us to buy or sell coins
+ *
  * Created by lsharshar on 8/30/2018.
  */
 @RestController
 public class TransactionController {
 	@Autowired
 	private SwapService swapService;
-
-	@Autowired
-	private TickerService tickerService;
 
 	@PostMapping("/buy")
 	public String buy(@RequestParam double amount, @RequestParam String asset,
@@ -45,7 +39,7 @@ public class TransactionController {
 		if (swapExecutor == null) {
 			return "Unable to define the executor";
 		}
-		return swapExecutor.sellCoin(swapExecutor.getCache().getTicker1(), amount).name();
+		return swapExecutor.sellCoin(swapExecutor.getCache().getTicker1(), amount, 0L).name();
 	}
 
 	private SwapExecutor getExecutor(String asset, String base, String commission, short exchange) {
@@ -64,10 +58,5 @@ public class TransactionController {
 			return null;
 		}
 		return swapExecutor;
-	}
-
-	private Ticker getTicker(String asset, String base, ScratchConstants.Exchange exchange) {
-		List<Ticker> tickers = tickerService.getTickers();
-		return tickerService.getInList(asset, base, exchange.getValue(), tickers);
 	}
 }
