@@ -46,7 +46,7 @@ public class PriceUpdaterService {
 	@Autowired
 	private ThreadPool pool;
 
-	@Scheduled(cron = "0 15 * * * *")
+	@Scheduled(cron = "0 30 * * * *")
 	public void updatePriceDataSchedule() {
 		if (!masterSettingsService.areWeRunning()) {
 			return;

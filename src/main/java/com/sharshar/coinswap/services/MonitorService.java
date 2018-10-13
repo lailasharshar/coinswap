@@ -40,7 +40,7 @@ public class MonitorService {
 	@Autowired
 	private HistoricalAnalysisService historicalAnalysisService;
 
-	@Scheduled(cron = "0 0 8 * * *")
+	@Scheduled(cron = "0 0 7 * * *")
 	public void notifyBalanceEveryDay() {
 		try {
 			logger.info("Sending out daily roundup for Binance");

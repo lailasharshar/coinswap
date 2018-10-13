@@ -47,7 +47,7 @@ public class SimulationRunner {
 	@Autowired
 	private TradeActionRepository tradeActionRepository;
 
-	@Scheduled(fixedRate = 5000)
+	//@Scheduled(fixedRate = 5000)
 	public void runTimedSimulation() {
 		runRandomSimulation(true);
 		runRandomSimulation(false);
