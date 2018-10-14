@@ -433,7 +433,7 @@ public class SwapExecutor {
 			cv.buyCoin = correctedAmountCoinToBuy;
 		} else {
 			cv.buyCoin = PurchaseAdvisor.getAmountToBuy(ownedAssets, swapDescriptor, tickerToBuy.getAsset(),
-					tickerToBuy.getBase(), correctedAmountCoinToBuy, priceData);
+					tickerToBuy.getBase(), correctedAmountCoinToBuy, priceData, swapService.getSwaps());
 		}
 		cv.buyPrice = buyPrice;
 		cv.sellPrice = sellPrice;
@@ -559,7 +559,7 @@ public class SwapExecutor {
 		}
 		if (!simulate && buy) {
 			amountToTransact = PurchaseAdvisor.getAmountToBuy(ownedAssets, swapDescriptor, coin.getAsset(),
-					coin.getBase(), amountToTransact, priceData);
+					coin.getBase(), amountToTransact, priceData, swapService.getSwaps());
 		}
 		amountToTransact = 0.98 * correctForVolume(coin, amountToTransact, maxVolume);
 		return correctForStep(coin.getStepSize(), amountToTransact);

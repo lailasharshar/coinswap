@@ -5,33 +5,30 @@ import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.utils.CoinUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * If we are sharing coins between swaps (for example BTC, we need to be able to determine how much to use when
  * we want to do a buy of that coin
- *
+ * <p>
  * Created by lsharshar on 9/26/2018.
  */
 public class PurchaseAdvisor {
-	private PurchaseAdvisor() {}
+	private PurchaseAdvisor() {
+	}
 
 	public static double getAmountToBuy(List<OwnedAsset> balances, SwapDescriptor swap, String coinToBuy, String base, double amount,
-								 List<PriceData> currentPrices) {
+										List<PriceData> currentPrices, List<SwapService.Swap> allSwaps) {
 		if (balances == null || swap == null || amount == 0) {
 			return 0.0;
 		}
-		double totalAmountExpressedInBase = 0;
-		double totalAmountActuallyOwnedInBase = 0;
 		// Determine how much we own as expressed in base coin and the current amount actually owned in the base coin
-		for (OwnedAsset asset : balances) {
-			double assetPrice = 1;
-			if (!asset.getAsset().equalsIgnoreCase(base)) {
-				assetPrice = CoinUtils.getPrice(asset.getAsset() + base, currentPrices);
-			} else {
-				totalAmountActuallyOwnedInBase = asset.getFree();
-			}
-			totalAmountExpressedInBase += (asset.getFree() + asset.getLocked()) * assetPrice;
+		double totalAmountExpressedInBase = getAmountInBase(balances, allSwaps, base, currentPrices);
+		OwnedAsset baseAsset = balances.stream().filter(c -> c.getAsset().equalsIgnoreCase(base)).findFirst().orElse(null);
+		double totalAmountActuallyOwnedInBase = 0;
+		if (baseAsset != null) {
+			totalAmountActuallyOwnedInBase = baseAsset.getFree();
 		}
 
 		// Now we can determine what percentage we are allowed to use - It doesn't correct if values don't add up to
@@ -57,7 +54,7 @@ public class PurchaseAdvisor {
 				totalAmountToReturn = amountImAllowed / priceCoin1;
 			}
 			if (coinToBuy.equalsIgnoreCase(swap.getCoin2())) {
-				totalAmountToReturn= amountImAllowed / priceCoin2;
+				totalAmountToReturn = amountImAllowed / priceCoin2;
 			}
 		}
 		// Now, make sure we haven't gone above what we wanted to buy
@@ -66,5 +63,33 @@ public class PurchaseAdvisor {
 		}
 		// We can't buy something if we don't have the coins for it in the base coin
 		return totalAmountToReturn;
+	}
+
+	public static double getAmountInBase(List<OwnedAsset> ownedAssets, List<SwapService.Swap> allSwaps, String base,
+										 List<PriceData> priceData) {
+		List<OwnedAsset> relevantOwnedAssets = new ArrayList<>();
+		for (SwapService.Swap swap : allSwaps) {
+			OwnedAsset foundAsset1 = ownedAssets.stream()
+					.filter(c -> c.getAsset().equalsIgnoreCase(swap.getSwapDescriptor().getCoin1()))
+					.findFirst().orElse(null);
+			if (foundAsset1 != null && !relevantOwnedAssets.contains(foundAsset1)) {
+				relevantOwnedAssets.add(foundAsset1);
+			}
+			OwnedAsset foundAsset2 = ownedAssets.stream()
+					.filter(c -> c.getAsset().equalsIgnoreCase(swap.getSwapDescriptor().getCoin2()))
+					.findFirst().orElse(null);
+			if (foundAsset2 != null && !relevantOwnedAssets.contains(foundAsset2)) {
+				relevantOwnedAssets.add(foundAsset2);
+			}
+		}
+		double totalAmountExpressedInBase = 0.0;
+		for (OwnedAsset asset : relevantOwnedAssets) {
+			double assetPrice = 1;
+			if (!asset.getAsset().equalsIgnoreCase(base)) {
+				assetPrice = CoinUtils.getPrice(asset.getAsset() + base, priceData);
+			}
+			totalAmountExpressedInBase += (asset.getFree() + asset.getLocked()) * assetPrice;
+		}
+		return totalAmountExpressedInBase;
 	}
 }

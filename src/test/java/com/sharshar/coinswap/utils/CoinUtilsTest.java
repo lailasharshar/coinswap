@@ -44,4 +44,11 @@ public class CoinUtilsTest {
 		assertEquals(2.0, CoinUtils.getPrice("NEOBTC", prices), 0.000001);
 		assertEquals(0.0, CoinUtils.getPrice("NOTHING", prices), 0.000001);
 	}
+
+	@Test
+	public void testSameAsBase() {
+		assertTrue(CoinUtils.inBaseCoin("BCDBCD"));
+		assertFalse(CoinUtils.inBaseCoin("ACDBCD"));
+		assertFalse(CoinUtils.inBaseCoin("ACDACE"));
+	}
 }

@@ -66,6 +66,9 @@ public class CoinUtils {
 	 * @return the price of the ticker
 	 */
 	public static double getPrice(String ticker, List<PriceData> priceData) {
+		if (CoinUtils.inBaseCoin(ticker)) {
+			return 1.0;
+		}
 		PriceData pd = getPriceData(ticker, priceData);
 		if (pd == null) {
 			return 0.0;
@@ -76,5 +79,18 @@ public class CoinUtils {
 	public static double getAmountOfCoinBFromCoinA(double amtCoinA, double priceCoinA, double priceCoinB) {
 		double amountInBase = amtCoinA * priceCoinA;
 		return amountInBase / priceCoinB;
+	}
+
+	public static boolean inBaseCoin(String ticker) {
+		if (ticker == null || ticker.length() % 2 == 1) {
+			return false;
+		}
+		int halfLength = ticker.length()/2;
+		for (int i=0; i<halfLength; i++) {
+			if (ticker.charAt(i) != ticker.charAt(i + halfLength)) {
+				return false;
+			}
+		}
+		return true;
 	}
 }

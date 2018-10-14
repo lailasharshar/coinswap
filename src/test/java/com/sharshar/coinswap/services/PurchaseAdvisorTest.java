@@ -1,9 +1,15 @@
 package com.sharshar.coinswap.services;
 
+import com.sharshar.coinswap.TestCoinswapApplication;
 import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.junit4.SpringRunner;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,22 +19,22 @@ import static org.junit.Assert.*;
 /**
  * Created by lsharshar on 9/30/2018.
  */
+@RunWith(SpringRunner.class)
+@SpringBootTest(classes = TestCoinswapApplication.class)
 public class PurchaseAdvisorTest {
+	@Autowired
+	SwapService swapService;
+
+	@Autowired
+	BinanceAccountServices binanceAccountServices;
+
 	@Test
 	public void getAmountToBuy() throws Exception {
-		// Try when the coin is coin1, coin2 or coin is base coin
-		// If we don't have enough data or enough money
-
-		List<PriceData> priceData = new ArrayList<>();
-		priceData.add(new PriceData().setPrice(0.2).setTicker("BTDBTC"));
-		priceData.add(new PriceData().setPrice(0.1).setTicker("ABCBTC"));
-		priceData.add(new PriceData().setPrice(1.0).setTicker("BTCBTC"));
-
-		List<OwnedAsset> balances = new ArrayList<>();
-		balances.add(new OwnedAsset().setAsset("BTC").setFree(300));
-
-		SwapDescriptor swap = new SwapDescriptor().setCoin1("BTD").setCoin2("ABC").setBaseCoin("BTC").setPercentPie(0.2);
-		double amt = PurchaseAdvisor.getAmountToBuy(balances, swap, "BTD", "BTC", 100, priceData);
+		List<PriceData> priceData = binanceAccountServices.getAllPrices();
+		List<OwnedAsset> balances = binanceAccountServices.getAllBalances();
+		List<SwapService.Swap> swaps = swapService.getSwaps();
+		SwapDescriptor swapDescriptor = swaps.get(0).getSwapDescriptor();
+		double amt = PurchaseAdvisor.getAmountToBuy(balances, swapDescriptor, "BCD", "BTC", 100, priceData, swaps);
 		System.out.println(amt);
 	}
 
