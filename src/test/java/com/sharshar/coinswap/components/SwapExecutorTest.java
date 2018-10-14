@@ -179,7 +179,7 @@ public class SwapExecutorTest {
 				.setCommissionCoin("BNB").setDesiredStdDev(4.0);
 		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
 		SwapExecutor executor = swap.getSwapExecutor();
-		SwapExecutor.ResponseCode code = executor.sellCoin(executor.getCache().getTicker1(), 2, swapDescriptor.getTableId());
+		SwapExecutor.ResponseCode code = executor.sellCoin(executor.getCache().getTicker1(), 2);
 		assertEquals(code, SELL_ORDER_FILLED);
 		executor.loadBalances();
 	}
@@ -218,7 +218,7 @@ public class SwapExecutorTest {
 	public void swapCoinsBtc2() {
 		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
 				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
-				.setCoin1("BTC").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(0.08)
+				.setCoin1("BTC").setCoin2("TUSD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(0.08)
 				.setCommissionCoin("BNB").setDesiredStdDev(4.0);
 		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
 		SwapExecutor executor = swap.getSwapExecutor();
@@ -233,11 +233,11 @@ public class SwapExecutorTest {
 	public void buyCoin2() {
 		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
 				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
-				.setCoin1("TUSD").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(0.15)
+				.setCoin1("BTC").setCoin2("TUSD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(0.15)
 				.setCommissionCoin("BNB").setDesiredStdDev(4.0);
 		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
 		SwapExecutor executor = swap.getSwapExecutor();
-		SwapExecutor.ResponseCode code = executor.buyCoin(executor.getCache().getTicker2(), 4);
+		SwapExecutor.ResponseCode code = executor.sellCoin(executor.getCache().getTicker2(), 4);
 		assertEquals(code, BUY_ORDER_FILLED);
 		executor.loadBalances();
 	}
@@ -247,7 +247,7 @@ public class SwapExecutorTest {
 	public void testSwap2() {
 		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
 				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
-				.setCoin1("TUSD").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(0.08)
+				.setCoin1("BTC").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(1.00)
 				.setCommissionCoin("BNB").setDesiredStdDev(4.0);
 		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
 		SwapExecutor executor = swap.getSwapExecutor();

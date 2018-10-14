@@ -30,6 +30,6 @@ public class OrderHistoryServiceTest {
 
 	@Test
 	public void testUpdateOrder() {
-		assertTrue(orderHistoryService.updateWithPrice("345345", "2.5"));
+		assertTrue(orderHistoryService.updateWithPrice(19299439L));
 	}
 }

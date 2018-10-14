@@ -224,7 +224,7 @@ public class BinanceAccountServices implements AccountService {
 
 	public NewOrderResponse createMarketOrder(String ticker, double amount, OrderSide orderSide, Long refId) {
 		OrderHistory history = new OrderHistory().setAmount(amount).setSymbol(ticker).setSide(orderSide.name())
-				.setStatus(OrderStatus.NEW.name()).setSwapId(refId);
+				.setStatus(OrderStatus.NEW.name()).setSwapId(refId == null || refId == 0 ? null : refId);
 		logger.info("Attempting to " + orderSide + " " + amount + " of " + ticker);
 		NewOrderResponse response = null;
 		try {

@@ -1,12 +1,18 @@
 package com.sharshar.coinswap.controllers;
 
+import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.components.SwapExecutor;
+import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import com.sharshar.coinswap.services.SwapService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Allows us to buy or sell coins
@@ -17,6 +23,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class TransactionController {
 	@Autowired
 	private SwapService swapService;
+
+	@Autowired
+	private BinanceAccountServices binanceAccountServices;
 
 	@PostMapping("/buy")
 	public String buy(@RequestParam double amount, @RequestParam String asset,
@@ -39,7 +48,7 @@ public class TransactionController {
 		if (swapExecutor == null) {
 			return "Unable to define the executor";
 		}
-		return swapExecutor.sellCoin(swapExecutor.getCache().getTicker1(), amount, 0L).name();
+		return swapExecutor.sellCoin(swapExecutor.getCache().getTicker1(), amount).name();
 	}
 
 	private SwapExecutor getExecutor(String asset, String base, String commission, short exchange) {
@@ -58,5 +67,10 @@ public class TransactionController {
 			return null;
 		}
 		return swapExecutor;
+	}
+
+	@GetMapping("/assets")
+	public List<OwnedAsset> getAssets() {
+		return binanceAccountServices.getAllBalances().stream().filter(c -> c.getFree() > 0).collect(Collectors.toList());
 	}
 }

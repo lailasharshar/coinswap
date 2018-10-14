@@ -15,4 +15,5 @@ public interface OrderHistoryRepository extends CrudRepository<OrderHistory, Lon
 	List<OrderHistory> findAllByOrderByCreateDtmDesc();
 	List<OrderHistory> findByClientOrderId(String clientOrderId);
 	List<OrderHistory> findBySwapId(Long swapId);
+	List<OrderHistory> findByOrderId(Long orderId);
 }
