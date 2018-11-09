@@ -17,7 +17,7 @@ import java.util.List;
 @Component
 @Scope("prototype")
 public class SwapExecutorThread implements Runnable {
-	Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	private MessageService messageService;
 	private SwapService.Swap swap;

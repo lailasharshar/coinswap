@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  */
 @Service
 public class BinanceAccountServices implements AccountService {
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private BinanceApiRestClient binanceApiRestClient;

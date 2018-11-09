@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class CacheService {
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private ApplicationContext applicationContext;

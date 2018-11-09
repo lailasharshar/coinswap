@@ -29,7 +29,7 @@ import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.TRANSAC
 @Service
 public class PriceUpdaterService {
 
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private SwapService swapService;
@@ -64,12 +64,12 @@ public class PriceUpdaterService {
 			ExchangeCache.Position position = swap.getSwapExecutor().getCache().addPriceData(exchangeData);
 			if (swap.getSwapExecutor().getCurrentSwapState() == ScratchConstants.CurrentSwapState.OWNS_COIN_1 &&
 					position == ExchangeCache.Position.ABOVE_DESIRED_RATIO) {
-				logger.info("Above desired ration - swapping: " + swap.getSwapDescriptor().getCoin1() + " for " +
+				logger.info("Above desired ratio - swapping: " + swap.getSwapDescriptor().getCoin1() + " for " +
 						swap.getSwapDescriptor().getCoin2());
 				launchThread(exchangeData, swap, false);
 			} else if (swap.getSwapExecutor().getCurrentSwapState() == ScratchConstants.CurrentSwapState.OWNS_COIN_2 &&
 					position == ExchangeCache.Position.BELOW_DESIRED_RATIO) {
-				logger.info("Below desired ration - swapping: " + swap.getSwapDescriptor().getCoin2() + " for " +
+				logger.info("Below desired ratio - swapping: " + swap.getSwapDescriptor().getCoin2() + " for " +
 						swap.getSwapDescriptor().getCoin1());
 				launchThread(exchangeData, swap, true);
 			}

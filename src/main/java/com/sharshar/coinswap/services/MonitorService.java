@@ -20,7 +20,7 @@ import java.util.List;
  */
 @Service
 public class MonitorService {
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	BinanceAccountServices binanceAccountServices;

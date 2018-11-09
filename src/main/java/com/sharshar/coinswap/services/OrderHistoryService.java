@@ -17,7 +17,7 @@ import java.util.List;
  */
 @Service
 public class OrderHistoryService {
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private OrderHistoryRepository orderHistoryRepository;

@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @Service
 public class HistoricalDataPull {
 
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Value("${historic.dataUrl}")
 	private String dataUrl;

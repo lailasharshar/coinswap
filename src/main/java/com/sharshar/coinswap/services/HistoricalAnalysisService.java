@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 @Service
 public class HistoricalAnalysisService {
 
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private HistoricalPriceCache historicalPriceCache;

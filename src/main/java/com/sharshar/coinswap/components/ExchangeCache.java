@@ -25,7 +25,7 @@ import static com.sharshar.coinswap.components.ExchangeCache.Position.*;
 @Component
 @Scope("prototype")
 public class ExchangeCache {
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	public enum Position {
 		INVALID_DATA,
