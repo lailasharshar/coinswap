@@ -7,6 +7,7 @@ import com.sharshar.coinswap.utils.CoinUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * If we are sharing coins between swaps (for example BTC, we need to be able to determine how much to use when
@@ -18,8 +19,8 @@ public class PurchaseAdvisor {
 	private PurchaseAdvisor() {
 	}
 
-	public static double getAmountToBuy(List<OwnedAsset> balances, SwapDescriptor swap, String coinToBuy, String base, double amount,
-										List<PriceData> currentPrices, List<SwapService.Swap> allSwaps) {
+	public static double getAmountToBuy(List<OwnedAsset> balances, SwapDescriptor swap, String coinToBuy, String base,
+										double amount, List<PriceData> currentPrices, List<SwapService.Swap> allSwaps) {
 		if (balances == null || swap == null || amount == 0) {
 			return 0.0;
 		}
@@ -69,21 +70,14 @@ public class PurchaseAdvisor {
 										 List<PriceData> priceData) {
 		List<OwnedAsset> relevantOwnedAssets = new ArrayList<>();
 		for (SwapService.Swap swap : allSwaps) {
-			OwnedAsset foundAsset1 = ownedAssets.stream()
-					.filter(c -> c.getAsset().equalsIgnoreCase(swap.getSwapDescriptor().getCoin1()))
-					.findFirst().orElse(null);
-			if (foundAsset1 != null && !relevantOwnedAssets.contains(foundAsset1)) {
-				relevantOwnedAssets.add(foundAsset1);
-			}
-			OwnedAsset foundAsset2 = ownedAssets.stream()
-					.filter(c -> c.getAsset().equalsIgnoreCase(swap.getSwapDescriptor().getCoin2()))
-					.findFirst().orElse(null);
-			if (foundAsset2 != null && !relevantOwnedAssets.contains(foundAsset2)) {
-				relevantOwnedAssets.add(foundAsset2);
-			}
+			relevantOwnedAssets.addAll(ownedAssets.stream().filter(c ->
+					c.getAsset().equalsIgnoreCase(swap.getSwapDescriptor().getCoin1()) ||
+					c.getAsset().equalsIgnoreCase(swap.getSwapDescriptor().getCoin2()) ||
+					c.getAsset().equalsIgnoreCase(swap.getSwapDescriptor().getBaseCoin())).collect(Collectors.toList()));
 		}
+		List<OwnedAsset> relevantOwnedAssetsWithoutDups  = relevantOwnedAssets.stream().distinct().collect(Collectors.toList());
 		double totalAmountExpressedInBase = 0.0;
-		for (OwnedAsset asset : relevantOwnedAssets) {
+		for (OwnedAsset asset : relevantOwnedAssetsWithoutDups) {
 			double assetPrice = 1;
 			if (!asset.getAsset().equalsIgnoreCase(base)) {
 				assetPrice = CoinUtils.getPrice(asset.getAsset() + base, priceData);
