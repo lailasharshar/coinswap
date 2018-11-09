@@ -9,6 +9,7 @@ import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
 import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
 import com.sharshar.coinswap.services.SwapService;
+import com.sharshar.coinswap.utils.CoinUtils;
 import com.sharshar.coinswap.utils.ScratchConstants;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -254,5 +255,33 @@ public class SwapExecutorTest {
 		List<PriceData> pd = binance.getAllPrices();
 		TradeAction ta = executor.swapCoin2ToCoin1(pd, false);
 		assertNotNull(ta);
+	}
+
+	@Test
+	public void correctForVolume() {
+		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
+				.setCoin1("BTC").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(1.00)
+				.setCommissionCoin("BNB").setDesiredStdDev(4.0).setLastVolume1(10000000.0).setLastVolume2(1000.0);
+		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
+		SwapExecutor executor = swap.getSwapExecutor();
+		double result = SwapExecutor.correctForVolume(swapDescriptor, executor.getCache().getTicker2(), 193329.6175, 0.5);
+	}
+
+	@Test
+	public void testEstimates() {
+		SwapDescriptor swapDescriptor = new SwapDescriptor().setActive(true)
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue())
+				.setCoin1("BTC").setCoin2("BCD").setSimulate(false).setBaseCoin("BTC").setMaxPercentVolume(1.00)
+				.setCommissionCoin("BNB").setDesiredStdDev(4.0).setLastVolume1(10000000.0).setLastVolume2(1000.0);
+
+		SwapService.Swap swap = swapService.createComponent(swapDescriptor, true);
+		SwapExecutor executor = swap.getSwapExecutor();
+		List<PriceData> pd = binance.getAllPrices();
+		SwapExecutor.CoinValues coinValues = executor.getAdjustmentAmounts(null, executor.getCache().getTicker2(),
+				2000.0, executor.getCache().getTicker1(), executor.getCache().getCommissionTicker(), pd, true);
+		System.out.println("Price: " + CoinUtils.getPrice(swapDescriptor.getCoin2() + swapDescriptor.getBaseCoin(), pd));
+		System.out.println("Est Price: " + coinValues.buyPriceAvgEst);
+		System.out.println("Est Price: " + coinValues.sellPriceAvgEst);
 	}
 }

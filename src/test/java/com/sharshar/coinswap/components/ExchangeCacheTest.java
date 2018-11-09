@@ -134,4 +134,34 @@ public class ExchangeCacheTest {
 		PriceData p = cache.getLastPriceData(coin1 + base);
 		assertTrue(p.getPrice() > 0);
 	}
+
+	@Test
+	public void updateStatsTest() {
+		swapDescriptor = new SwapDescriptor().setCoin1("BTC").setCoin2("HOT").setBaseCoin(base)
+				.setExchange(ScratchConstants.Exchange.BINANCE.getValue()).setCommissionCoin(commCoin)
+				.setActive(true).setSimulate(true).setMaxPercentVolume(0.2).setDesiredStdDev(0.2);
+		// Separate the tests so we don't actually use the wrong value from copy and paste
+		double percentToGoUp = 0.20;
+		double percentToGoDown = 0.20;
+		Date now = new Date();
+		PriceData pd1 = new PriceData().setExchange(ScratchConstants.Exchange.BINANCE)
+				.setPrice(1.0).setUpdateTime(now).setTicker("BTCBTC");
+		{
+			SwapService.Swap swap = swapService.createComponent(swapDescriptor);
+			PriceData lastPriceData = swap.getSwapExecutor().getCache().getLastPriceData("HOTBTC");
+			PriceData pd2 = new PriceData().setExchange(ScratchConstants.Exchange.BINANCE)
+					.setPrice(lastPriceData.getPrice() * (1 + percentToGoUp)).setUpdateTime(now).setTicker("HOTBTC");
+			ExchangeCache.Position pos = swap.getSwapExecutor().getCache().updateStats(pd1, pd2, 0.1);
+			System.out.println(pos);
+		}
+		{
+			// Reset the values
+			SwapService.Swap swap = swapService.createComponent(swapDescriptor);
+			PriceData lastPriceData = swap.getSwapExecutor().getCache().getLastPriceData("HOTBTC");
+			PriceData pd2 = new PriceData().setExchange(ScratchConstants.Exchange.BINANCE)
+					.setPrice(lastPriceData.getPrice() * (1 - percentToGoDown)).setUpdateTime(now).setTicker("HOTBTC");
+			ExchangeCache.Position pos = swap.getSwapExecutor().getCache().updateStats(pd1, pd2, 0.1);
+			System.out.println(pos);
+		}
+	}
 }
