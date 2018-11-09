@@ -1,14 +1,13 @@
 package com.sharshar.coinswap.services;
 
-import com.sharshar.coinswap.beans.OwnedAsset;
-import com.sharshar.coinswap.beans.PriceData;
 import com.sharshar.coinswap.beans.SwapDescriptor;
 import com.sharshar.coinswap.beans.Ticker;
 import com.sharshar.coinswap.beans.simulation.TradeAction;
+import com.sharshar.coinswap.beans.uiresponses.Holdings;
+import com.sharshar.coinswap.beans.uiresponses.OwnedAssetUI;
 import com.sharshar.coinswap.components.ExchangeCache;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.exchanges.AccountService;
-import com.sharshar.coinswap.utils.CoinUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,10 +27,13 @@ import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.TRANSAC
  */
 @Service
 public class MessageService {
-	Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private NotificationService notificationService;
+
+	@Autowired
+	private SummaryService summaryService;
 
 	public void notifyStatusErrors(String error) {
 		if (error != null && !error.isEmpty()) {
@@ -79,27 +81,22 @@ public class MessageService {
 	}
 
 	public void dailyRoundup(AccountService service) {
+		Holdings holdings = summaryService.getHoldings(service);
 		StringBuilder results = new StringBuilder();
-		List<OwnedAsset> assetList = service.getBalancesWithValues();
-		List<PriceData> priceData = service.getAllPrices();
-		double totalAmountOfBtc = 0;
-		for (OwnedAsset asset : assetList) {
+		for (OwnedAssetUI asset : holdings.getOwnedAssets()) {
 			results.append("Asset: ").append(asset.getAsset()).append(" ")
-					.append(String.format("%.4f", asset.getFree()))
-					.append("/").append(String.format("%.4f", asset.getLocked()));
-			double assetPrice = 1;
-			if (!asset.getAsset().equalsIgnoreCase("BTC")) {
-				assetPrice = CoinUtils.getPrice(asset.getAsset() + "BTC", priceData);
-			}
-			double amountInBtc = (asset.getFree() + asset.getLocked()) * assetPrice;
-			results.append(" = ").append(String.format("%.4f", amountInBtc)).append("<br>");
-			totalAmountOfBtc += amountInBtc;
+					.append(String.format("%.4f", asset.getTotal()));
+			double assetPrice = asset.getPrice();
+			results.append(" @ ").append(String.format("%.7f", assetPrice)).append(" ");
+			double amountInBtc = asset.getInBTC();
+			double amountInUSD = asset.getInUSD();
+			results.append(" = BTC ").append(String.format("%.7f", amountInBtc)).append(" ");
+			results.append(" = $ ").append(String.format("%.7f", amountInUSD)).append("<br>");
 		}
 		NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(Locale.US);
-		double totalDollars = CoinUtils.getPrice("BTCUSDT", priceData) * totalAmountOfBtc;
-		String totalDollarsString = currencyFormat.format(totalDollars);
-		results.append("<br>").append("Total: ").append(String.format("%.4f", totalAmountOfBtc))
-				.append(" = ").append(totalDollarsString).append("<br>");
+		String totalDollarsString = currencyFormat.format(holdings.getAmountInUSD());
+		results.append("<br>").append("Total: ").append(String.format("%.7f", holdings.getAmountInBitcoin()))
+				.append(" = $ ").append(totalDollarsString).append("<br>");
 		try {
 			notificationService.notifyMe("Daily Roundup: " + totalDollarsString, results.toString());
 		} catch (Exception ex)	{

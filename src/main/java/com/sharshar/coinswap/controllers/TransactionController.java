@@ -1,18 +1,16 @@
 package com.sharshar.coinswap.controllers;
 
-import com.sharshar.coinswap.beans.OwnedAsset;
 import com.sharshar.coinswap.beans.SwapDescriptor;
+import com.sharshar.coinswap.beans.uiresponses.Holdings;
 import com.sharshar.coinswap.components.SwapExecutor;
 import com.sharshar.coinswap.exchanges.binance.BinanceAccountServices;
+import com.sharshar.coinswap.services.SummaryService;
 import com.sharshar.coinswap.services.SwapService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Allows us to buy or sell coins
@@ -23,6 +21,9 @@ import java.util.stream.Collectors;
 public class TransactionController {
 	@Autowired
 	private SwapService swapService;
+
+	@Autowired
+	private SummaryService summaryService;
 
 	@Autowired
 	private BinanceAccountServices binanceAccountServices;
@@ -70,7 +71,7 @@ public class TransactionController {
 	}
 
 	@GetMapping("/assets")
-	public List<OwnedAsset> getAssets() {
-		return binanceAccountServices.getAllBalances().stream().filter(c -> c.getFree() > 0).collect(Collectors.toList());
+	public Holdings getAssets() {
+		return summaryService.getHoldings(binanceAccountServices);
 	}
 }
