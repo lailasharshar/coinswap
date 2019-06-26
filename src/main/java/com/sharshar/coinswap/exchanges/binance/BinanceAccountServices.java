@@ -52,6 +52,9 @@ public class BinanceAccountServices implements AccountService {
 	@Value("${maxBaseCoinChunks:0.03}")
 	private double maxBaseCoinChunks;
 
+	@Value("${minBaseCoinChunks:0.003}")
+	private double minBaseCoinChunks;
+
 	public static final long ONE_HOUR = (1000L * 60 * 60);
 
 	public double getDefaultTransactionFee() {
@@ -270,6 +273,11 @@ public class BinanceAccountServices implements AccountService {
 	@Override
 	public double getMaxAmountAtTime() {
 		return maxBaseCoinChunks;
+	}
+
+	@Override
+	public double getMinAmountAtTime() {
+		return minBaseCoinChunks;
 	}
 
 	public List<PriceData> getBackfillData(int cacheSize, String coin, String baseCoin) {

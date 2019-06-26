@@ -33,4 +33,5 @@ public interface AccountService {
 	List<Ticker> getTickerDefinitions();
 	OrderBook getBookOrders(String ticker);
 	double getMaxAmountAtTime();
+	double getMinAmountAtTime();
 }

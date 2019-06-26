@@ -27,7 +27,7 @@ import static com.sharshar.coinswap.utils.ScratchConstants.ONE_DAY;
  */
 @Service
 public class SimulationRunner {
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private TickerService tickerService;
@@ -74,7 +74,7 @@ public class SimulationRunner {
 		while (selectItem2 == selectItem1) {
 			selectItem2 = random.nextInt(numTickers);
 		}
-		double desiredStdDev = (Math.random() * 1.5);
+		double desiredStdDev = (Math.random() * 0.8);
 		Ticker ticker1 = btcTicker;
 		if (!btcOnly) {
 			ticker1 = itemsToUse.get(selectItem1);

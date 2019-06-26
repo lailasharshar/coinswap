@@ -73,10 +73,10 @@ public class HistoricalAnalysisServiceTest {
 
 	@Test
 	public void simulateHistoricalWithBTC() throws Exception {
-		double stdDev = 0.02;
-		while (stdDev < 1.00) {
+		double stdDev = 0.30;
+		while (stdDev < 0.40) {
 			try {
-				runSimulation("BTC", "BCD", 0.05, stdDev);
+				runSimulation("BTC", "HOT", 0.05, stdDev);
 				stdDev += 0.02;
 				//Thread.sleep(20000L);
 			} catch (Exception ex) {
@@ -113,7 +113,7 @@ public class HistoricalAnalysisServiceTest {
 				.setExchange(ScratchConstants.Exchange.BINANCE.getValue()).setCommissionCoin("BNB")
 				.setActive(true).setSimulate(true).setMaxPercentVolume(maxPercentVolume).setDesiredStdDev(stdDev);
 		long checkUpInterval = ScratchConstants.ONE_DAY;
-		double seedMoney = 0.15;
+		double seedMoney = 1.0;
 		long startTime = System.currentTimeMillis();
 		SimulatorRecord record = historical.simulateHistoricalAnalysis(swap, checkUpInterval, seedMoney);
 		long endTime = System.currentTimeMillis();

@@ -29,8 +29,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.BUY_ORDER_FILLED;
-import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.SELL_ORDER_FILLED;
+import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.*;
 
 /**
  * Encapsulates a coin swap service. This enables to instantiate more than one in this process
@@ -41,7 +40,7 @@ import static com.sharshar.coinswap.components.SwapExecutor.ResponseCode.SELL_OR
 @Scope("prototype")
 public class SwapExecutor {
 
-	private class CoinValues {
+	public class CoinValues {
 		double sellCoin;
 		double sellPrice;
 		double buyCoin;
@@ -59,6 +58,7 @@ public class SwapExecutor {
 		SELL_ORDER_EXPIRED,
 		BUY_ORDER_NEW,
 		BUY_ORDER_FILLED,
+		BUY_ORDER_MOSTLY_FILLED,
 		BUY_ORDER_PARTIAL_FILLED,
 		BUY_ORDER_CANCELLED,
 		BUY_ORDER_PENDING_CANCEL,
@@ -80,7 +80,7 @@ public class SwapExecutor {
 		COIN_IS_BASECOIN, OUT_OF_MONEY_COIN2
 	}
 
-	private Logger logger = LogManager.getLogger();
+	private static final Logger logger = LogManager.getLogger();
 
 	@Autowired
 	private SwapService swapService;
@@ -238,8 +238,12 @@ public class SwapExecutor {
 				action.setResponseCode(ResponseCode.NOT_ENOUGH_COMMISSION_CURRENCY);
 				return action;
 			}
-			ResponseCode buyResponse = breakUpAndBuyCoin(coinB, buyPrice, coinToBuyAmount);
-			if (buyResponse == ResponseCode.BUY_ORDER_FILLED) {
+			ResponseCode buyResponse = breakUpAndBuyCoin(coinB, buyPrice,
+					accountService.getMinAmountAtTime()/buyPrice,
+					accountService.getMaxAmountAtTime()/buyPrice,
+					coinToBuyAmount,
+					coinToBuyAmount);
+			if (buyResponse == ResponseCode.BUY_ORDER_FILLED || buyResponse == ResponseCode.BUY_ORDER_MOSTLY_FILLED) {
 				logger.info("Buy order filled for: " + coinB.getAssetAndBase());
 			} else {
 				action.setResponseCode(buyResponse);
@@ -412,7 +416,7 @@ public class SwapExecutor {
 	 * @param priceData - the latest price data to perform conversions between the three tickers
 	 * @return the corrected values to sell, buy and estimated commissions
 	 */
-	private CoinValues getAdjustmentAmounts(List<OwnedAsset> ownedAssets, Ticker tickerToSell, double amountToSell,
+	public CoinValues getAdjustmentAmounts(List<OwnedAsset> ownedAssets, Ticker tickerToSell, double amountToSell,
 											Ticker tickerToBuy, Ticker commissionCoin, List<PriceData> priceData,
 											boolean simulate) {
 		double sellPrice = CoinUtils.getPrice(tickerToSell.getAssetAndBase(), priceData);
@@ -499,7 +503,7 @@ public class SwapExecutor {
 
 		/* first we sell */
 
-		ResponseCode sellResponse = sellCoin(coinA, coinValues.sellCoin);
+		ResponseCode sellResponse = breakUpAndSellCoin(coinA, coinValues.sellPrice, coinValues.sellCoin);
 		if (sellResponse == ResponseCode.SELL_ORDER_FILLED) {
 			logger.info("Sell order filled for: " + coinA.getAssetAndBase());
 			if (!loadBalances()) {
@@ -513,8 +517,12 @@ public class SwapExecutor {
 
 		/* Then we buy */
 
-		ResponseCode buyResponse = buyCoin(coinB, coinValues.buyCoin);
-		if (buyResponse == ResponseCode.BUY_ORDER_FILLED) {
+		ResponseCode buyResponse = breakUpAndBuyCoin(coinB, coinValues.buyPrice,
+				accountService.getMinAmountAtTime()/coinValues.buyPrice,
+				accountService.getMaxAmountAtTime()/coinValues.buyPrice,
+				coinValues.buyCoin,
+				coinValues.buyCoin);
+		if (buyResponse == ResponseCode.BUY_ORDER_FILLED || buyResponse == ResponseCode.BUY_ORDER_MOSTLY_FILLED) {
 			logger.info("Buy order filled for: " + coinB.getAssetAndBase());
 			if (!loadBalances()) {
 				action.setResponseCode(ResponseCode.UNABLE_TO_UPDATE_COIN_BALANCES);
@@ -561,7 +569,7 @@ public class SwapExecutor {
 			amountToTransact = PurchaseAdvisor.getAmountToBuy(ownedAssets, swapDescriptor, coin.getAsset(),
 					coin.getBase(), amountToTransact, priceData, swapService.getSwaps());
 		}
-		amountToTransact = 0.98 * correctForVolume(coin, amountToTransact, maxVolume);
+		amountToTransact = 0.95 * correctForVolume(swapDescriptor, coin, amountToTransact, maxVolume);
 		return correctForStep(coin.getStepSize(), amountToTransact);
 	}
 
@@ -574,13 +582,13 @@ public class SwapExecutor {
 	 * @param amountOfVolume - The percentage of volume we are willing to go up to
 	 * @return the amount we can buy/sell based on our volume restrictions
 	 */
-	private double correctForVolume(Ticker coin, double amountToTransact, Double amountOfVolume) {
+	public static double correctForVolume(SwapDescriptor sd, Ticker coin, double amountToTransact, Double amountOfVolume) {
 		double lastVolume = 0;
-		if (swapDescriptor.getCoin1().equalsIgnoreCase(coin.getAsset())) {
-			lastVolume = swapDescriptor.getLastVolume1();
+		if (sd.getCoin1().equalsIgnoreCase(coin.getAsset())) {
+			lastVolume = sd.getLastVolume1();
 		}
-		if (swapDescriptor.getCoin2().equalsIgnoreCase(coin.getAsset())) {
-			lastVolume = swapDescriptor.getLastVolume2();
+		if (sd.getCoin2().equalsIgnoreCase(coin.getAsset())) {
+			lastVolume = sd.getLastVolume2();
 		}
 		if (lastVolume == 0) {
 			return amountToTransact;
@@ -762,7 +770,7 @@ public class SwapExecutor {
 		NewOrderResponse response = accountService.createSellMarketOrder(coin.getAssetAndBase(), amountCoinToSell,
 				swapDescriptor.getTableId() == null ? 0 : swapDescriptor.getTableId());
 		if (response == null) {
-			return ResponseCode.SELL_ORDER_ERROR;
+			return SELL_ORDER_ERROR;
 		}
 
 		// Retrieve the transaction Id
@@ -819,12 +827,15 @@ public class SwapExecutor {
 	 * @param totalAmountToBuy - the total amount you want to buy
 	 * @return the list of broken up pieces
 	 */
-	public List<Double> breakItUp(double stepSize, double price, double totalAmountToBuy) {
+	public List<Double> breakItUp(double stepSize, double minAmountAtTime, double maxAmountAtTime, double price, double totalAmountToBuy) {
 		List<Double> amounts = new ArrayList<>();
 		if (stepSize == 0 || totalAmountToBuy == 0) {
 			return amounts;
 		}
-		double reasonableAmountAtTime = correctForStep(stepSize, accountService.getMaxAmountAtTime()/price);
+		if (minAmountAtTime > totalAmountToBuy) {
+			return amounts;
+		}
+		double reasonableAmountAtTime = correctForStep(stepSize, maxAmountAtTime);
 		if (reasonableAmountAtTime > totalAmountToBuy) {
 			amounts.add(totalAmountToBuy);
 			return amounts;
@@ -847,7 +858,11 @@ public class SwapExecutor {
 	}
 
 	public ResponseCode breakUpAndSellCoin(Ticker ticker, Double price, double totalAmountToSell) {
-		List<Double> itemsBrokenUp = breakItUp(ticker.getStepSize(), price, totalAmountToSell);
+		List<Double> itemsBrokenUp = breakItUp(ticker.getStepSize(),
+				accountService.getMinAmountAtTime()/price,
+				accountService.getMaxAmountAtTime()/price,
+				price,
+				totalAmountToSell);
 		logger.info("Selling: " + String.format("%.4f", totalAmountToSell) + " in " + itemsBrokenUp.size() + " chunks");
 		this.amountExecuted = 0;
 		this.amountSelling = totalAmountToSell;
@@ -868,18 +883,42 @@ public class SwapExecutor {
 		return SELL_ORDER_FILLED;
 	}
 
-	public ResponseCode breakUpAndBuyCoin(Ticker ticker, Double price, double totalAmountToBuy) {
-		List<Double> itemsBrokenUp = breakItUp(ticker.getStepSize(), price, totalAmountToBuy);
+	public ResponseCode breakUpAndBuyCoin(Ticker ticker, Double price, double minAmount, double maxAmount,
+										  double totalAmountToBuy, double totalOrigAmountToBuy) {
+		List<Double> itemsBrokenUp = breakItUp(ticker.getStepSize(), minAmount, maxAmount, price, totalAmountToBuy);
 		logger.info("Buying: " + String.format("%.4f", totalAmountToBuy) + " in " + itemsBrokenUp.size() + " chunks");
 		ResponseCode errorCode = null;
 		this.amountExecuted = 0;
 		this.amountBuying = totalAmountToBuy;
-		for (double amt : itemsBrokenUp) {
-			ResponseCode responseCode = buyCoin(ticker, amt);
-			if (responseCode != BUY_ORDER_FILLED) {
-				errorCode = responseCode;
+		try {
+			for (double amt : itemsBrokenUp) {
+				ResponseCode responseCode = buyCoin(ticker, amt);
+				if (responseCode != BUY_ORDER_FILLED) {
+					errorCode = responseCode;
+				} else {
+					this.amountExecuted += amt;
+				}
+			}
+		} catch (Exception ex) {
+			// We ran out of funds before we could buy all we wanted
+			if (ex.getMessage().contains("insufficient balance")) {
+				// If we've bought 90% of what we wanted, good enough
+				if (this.amountExecuted / totalOrigAmountToBuy > 0.9) {
+					return BUY_ORDER_MOSTLY_FILLED;
+				}
+				// If we are really low on the amount of base coin, but still have purchased a bunch, also
+				// consider it a success
+				OwnedAsset asset = accountService.getBalance(ticker.getBase());
+				if (asset.getFree() < 0.001 && this.amountExecuted / totalOrigAmountToBuy > 0.7) {
+					return BUY_ORDER_MOSTLY_FILLED;
+				}
+
+				// Let's break it up further and buy in smaller chunks
+				return breakUpAndBuyCoin(ticker, price, minAmount, maxAmount / 2,
+						totalAmountToBuy - this.amountExecuted, totalOrigAmountToBuy);
 			} else {
-				this.amountExecuted += amt;
+				logger.error("Unable to buy coin", ex);
+				return BUY_ORDER_ERROR;
 			}
 		}
 		if (errorCode != null) {
